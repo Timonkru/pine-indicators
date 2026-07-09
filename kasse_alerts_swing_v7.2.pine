@@ -1,0 +1,664 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © KasseATB
+//@version=6
+indicator('Kasse Alerts – Swing v7.2', overlay = true, max_lines_count = 500, max_labels_count = 500)
+// ============================================================
+//  v7.2 – Swing Levels + COT Bias (erweitert)
+//  NEU: DAX/FTSE via EUR/GBP-Proxy (Score invertiert)
+//  NEU: Extreme-Erkennung – MM kontraer bei Crowded Trades
+//  NEU: Hintergrund: Datenwoche gruen/rot, Projektion grau
+//  v7.1: Mon/Wed/PW Linien, COT TF-Fix
+// ============================================================
+import TradingView/LibraryCOT/4 as cot
+// === LEVELS ===
+showMondayRange = input.bool(true, 'Monday H/L', group = 'Levels')
+showWedPivot    = input.bool(true, 'Wednesday H/L', group = 'Levels')
+showPrevWeek    = input.bool(true, 'Previous Week H/L', group = 'Levels')
+showWeeklyOpen  = input.bool(true, 'Weekly Open', group = 'Levels')
+showMonthlyOpen = input.bool(true, 'Monthly Open', group = 'Levels')
+showPrevMonth   = input.bool(true, 'Previous Month H/L', group = 'Levels')
+labelLookback   = input.int(2, 'Label Lookback (N letzte je Level)', minval = 1, maxval = 12, group = 'Levels', tooltip = 'Wie viele vergangene Vorkommen jedes Levels (Linie + Label) sichtbar bleiben. 1 = nur das aktuelle, hält den Chart sauber.')
+mondayColor     = input.color(color.blue, 'Monday', group = 'Farben')
+wedColor        = input.color(color.orange, 'Wednesday', group = 'Farben')
+prevWeekColor   = input.color(color.purple, 'Prev Week', group = 'Farben')
+weeklyOpenColor = input.color(color.teal, 'Weekly Open', group = 'Farben')
+monthlyOpenColor = input.color(color.aqua, 'Monthly Open', group = 'Farben')
+prevMonthColor   = input.color(color.fuchsia, 'Prev Month', group = 'Farben')
+tfmColor        = input.color(color.maroon, 'Thu-Fri-Mon', group = 'Farben')
+lineWidth       = input.int(2, 'Linienbreite', minval = 1, maxval = 5, group = 'Farben')
+// === HOUGAARD PATTERNS ===
+showTFM           = input.bool(true,  'Thu-Fri-Mon Pattern aktiv', group = 'Hougaard Patterns', tooltip = 'Tom Hougaards Setup: Wenn Friday-High < Thursday-High, dann erwarte Mon (oder Di bei Feiertag) Move auf Friday-Low.')
+showTFMLines      = input.bool(true,  'Fri Low (Target) + Fri High (Stop) zeichnen', group = 'Hougaard Patterns')
+showTFMHelpers    = input.bool(true,  'Thu/Fri H/L Linien anzeigen', group = 'Hougaard Patterns')
+tfmAlertOnArm     = input.bool(true,  'Alert wenn Setup armiert (Mo Open)', group = 'Hougaard Patterns')
+tfmIncludeTue     = input.bool(true,  'Auch Di einbeziehen (Holiday-Adjustment)', group = 'Hougaard Patterns')
+// === VOLUMEN ===
+showVolLabels  = input.bool(true, 'Volumen bei Breakout', group = 'Volumen')
+volThreshold   = input.float(1.3, 'Vol-Schwelle', minval = 1.0, maxval = 3.0, step = 0.1, group = 'Volumen')
+volPeriod      = input.int(20, 'Vol-Periode', minval = 5, maxval = 100, group = 'Volumen')
+breakoutMode   = input.string('Volumen-Bestätigt', 'Modus', options = ['Sofort', 'Volumen-Bestätigt'], group = 'Volumen')
+breakoutVolMin = input.float(1.0, 'Min. Vol für Break', minval = 0.5, maxval = 2.0, step = 0.1, group = 'Volumen')
+// === RETEST ===
+showRetestLabels = input.bool(true, 'Retest Labels', group = 'Retest')
+showRetestAlerts = input.bool(true, 'Retest Alerts', group = 'Retest')
+// === COT BIAS ===
+showCOT    = input.bool(true, 'COT Bias Hintergrund', group = 'COT')
+cotMode    = input.string('Auto', 'CFTC Code', options = ['Auto', 'Manuell'], group = 'COT')
+manCode    = input.string('', 'CFTC Code (manuell)', group = 'COT', tooltip = '088691=Gold, 099741=EUR, 13874+=SPX, 096742=GBP')
+bgAlpha    = input.int(92, 'COT Transparenz', minval = 80, maxval = 98, group = 'COT')
+showCOTtbl = input.bool(true, 'COT Table', group = 'COT')
+cotExtPct  = input.int(90, 'Extreme Percentile', minval = 70, maxval = 99, group = 'COT', tooltip = 'Ab diesem Pctile: MM wird kontraer (Crowded Trade)')
+// ============================================================
+//  FUNKTIONEN
+// ============================================================
+currentAvgVol = ta.sma(volume, volPeriod)
+getVolInfo(vol, avgVol) =>
+    pct = vol / avgVol * 100
+    txt = str.tostring(math.round(pct)) + '%'
+    clr = vol > avgVol * volThreshold ? color.green : vol > avgVol ? color.orange : color.red
+    sym = vol > avgVol * volThreshold ? '✓' : vol > avgVol ? '⚠' : '✗'
+    [txt, clr, sym]
+isConfirmed(vol, avgVol) =>
+    breakoutMode == 'Sofort' or vol >= avgVol * breakoutVolMin
+// v7.2: Lookback – haelt je Level-Stream nur die letzten N Linien + Labels, loescht den Rest
+drawLvl(lns, lbls, ln, lb, n) =>
+    array.push(lns, ln)
+    array.push(lbls, lb)
+    if array.size(lns) > n
+        line.delete(array.shift(lns))
+    if array.size(lbls) > n
+        label.delete(array.shift(lbls))
+    array.size(lns)
+// ============================================================
+//  ZEIT
+// ============================================================
+newDay  = ta.change(time('D')) != 0
+newWeek = ta.change(time('W')) != 0
+dow     = dayofweek(time)
+isMon = dow == dayofweek.monday
+isTue = dow == dayofweek.tuesday
+isWed = dow == dayofweek.wednesday
+isThu = dow == dayofweek.thursday
+isFri = dow == dayofweek.friday
+// ============================================================
+//  MONDAY RANGE
+// ============================================================
+var float monH = na, var float monL = na
+var int monHTime = 0, var int monLTime = 0
+var bool monSet = false, var bool monDrawn = false
+var array<line>  monHLines = array.new<line>()
+var array<label> monHLabs  = array.new<label>()
+var array<line>  monLLines = array.new<line>()
+var array<label> monLLabs  = array.new<label>()
+var bool monHBrk = false, var bool monLBrk = false
+var bool monHOut = false, var bool monLOut = false
+var bool monHRet = false, var bool monLRet = false
+if isMon
+    if newDay
+        monH := high, monL := low, monHTime := time, monLTime := time
+        monSet := false, monDrawn := false
+        monHBrk := false, monLBrk := false, monHOut := false, monLOut := false, monHRet := false, monLRet := false
+    else
+        if high > nz(monH, high)
+            monH := high, monHTime := time
+        if low < nz(monL, low)
+            monL := low, monLTime := time
+if isTue and newDay and showMondayRange and not na(monH)
+    monSet := true, monDrawn := true
+    drawLvl(monHLines, monHLabs, line.new(monHTime, monH, time, monH, xloc = xloc.bar_time, color = mondayColor, width = lineWidth), label.new(monHTime, monH, 'Mon H', xloc = xloc.bar_time, color = mondayColor, textcolor = color.white, style = label.style_label_down, size = size.small), labelLookback)
+    drawLvl(monLLines, monLLabs, line.new(monLTime, monL, time, monL, xloc = xloc.bar_time, color = mondayColor, width = lineWidth), label.new(monLTime, monL, 'Mon L', xloc = xloc.bar_time, color = mondayColor, textcolor = color.white, style = label.style_label_up, size = size.small), labelLookback)
+if array.size(monHLines) > 0
+    line.set_x2(array.last(monHLines), time)
+if array.size(monLLines) > 0
+    line.set_x2(array.last(monLLines), time)
+// ============================================================
+//  WEDNESDAY PIVOT
+// ============================================================
+var float wedH = na, var float wedL = na
+var int wedHTime = 0, var int wedLTime = 0
+var bool wedSet = false, var bool wedDrawn = false
+var array<line>  wedHLines = array.new<line>()
+var array<label> wedHLabs  = array.new<label>()
+var array<line>  wedLLines = array.new<line>()
+var array<label> wedLLabs  = array.new<label>()
+var bool wedHBrk = false, var bool wedLBrk = false
+var bool wedHOut = false, var bool wedLOut = false
+var bool wedHRet = false, var bool wedLRet = false
+if isWed
+    if newDay
+        wedH := high, wedL := low, wedHTime := time, wedLTime := time
+        wedSet := false, wedDrawn := false
+        wedHBrk := false, wedLBrk := false, wedHOut := false, wedLOut := false, wedHRet := false, wedLRet := false
+    else
+        if high > nz(wedH, high)
+            wedH := high, wedHTime := time
+        if low < nz(wedL, low)
+            wedL := low, wedLTime := time
+if isThu and newDay and showWedPivot and not na(wedH)
+    wedSet := true, wedDrawn := true
+    drawLvl(wedHLines, wedHLabs, line.new(wedHTime, wedH, time, wedH, xloc = xloc.bar_time, color = wedColor, width = lineWidth), label.new(wedHTime, wedH, 'Wed H', xloc = xloc.bar_time, color = wedColor, textcolor = color.white, style = label.style_label_down, size = size.small), labelLookback)
+    drawLvl(wedLLines, wedLLabs, line.new(wedLTime, wedL, time, wedL, xloc = xloc.bar_time, color = wedColor, width = lineWidth), label.new(wedLTime, wedL, 'Wed L', xloc = xloc.bar_time, color = wedColor, textcolor = color.white, style = label.style_label_up, size = size.small), labelLookback)
+if array.size(wedHLines) > 0
+    line.set_x2(array.last(wedHLines), time)
+if array.size(wedLLines) > 0
+    line.set_x2(array.last(wedLLines), time)
+// ============================================================
+//  THU & FRI TRACKING (für Hougaard Thu-Fri-Mon Pattern)
+// ============================================================
+var float thuH = na, var float thuL = na
+var int   thuHTime = 0, var int thuLTime = 0
+var array<line>  thuHLines = array.new<line>()
+var array<label> thuHLabs  = array.new<label>()
+var array<line>  thuLLines = array.new<line>()
+var array<label> thuLLabs  = array.new<label>()
+var float friH = na, var float friL = na
+var int   friHTime = 0, var int friLTime = 0
+var line  lnFriH = na, var line lnFriL = na
+if isThu
+    if newDay
+        thuH := high, thuL := low, thuHTime := time, thuLTime := time
+    else
+        if high > nz(thuH, high)
+            thuH := high, thuHTime := time
+        if low  < nz(thuL, low)
+            thuL := low, thuLTime := time
+if isFri
+    if newDay
+        // Donnerstag-Linien einmalig zeichnen
+        if showTFMHelpers and not na(thuH)
+            drawLvl(thuHLines, thuHLabs, line.new(thuHTime, thuH, time, thuH, xloc = xloc.bar_time, color = color.new(tfmColor, 40), width = 1, style = line.style_dashed), label.new(thuHTime, thuH, 'Thu H', xloc = xloc.bar_time, color = color.new(tfmColor, 40), textcolor = color.white, style = label.style_label_down, size = size.tiny), labelLookback)
+            drawLvl(thuLLines, thuLLabs, line.new(thuLTime, thuL, time, thuL, xloc = xloc.bar_time, color = color.new(tfmColor, 40), width = 1, style = line.style_dashed), label.new(thuLTime, thuL, 'Thu L', xloc = xloc.bar_time, color = color.new(tfmColor, 40), textcolor = color.white, style = label.style_label_up,   size = size.tiny), labelLookback)
+        friH := high, friL := low, friHTime := time, friLTime := time
+    else
+        if high > nz(friH, high)
+            friH := high, friHTime := time
+        if low  < nz(friL, low)
+            friL := low, friLTime := time
+// Live-Update: Donnerstag-Linien bis Freitag-Ende mitziehen
+if array.size(thuHLines) > 0 and isFri
+    line.set_x2(array.last(thuHLines), time)
+    line.set_x2(array.last(thuLLines), time)
+// ============================================================
+//  THU-FRI-MON PATTERN (Tom Hougaard)
+//  Setup: Fri H < Thu H  →  Erwartung: Mon (oder Di bei Holiday) hit Fri L
+// ============================================================
+var bool tfmArmed     = false
+var bool tfmTargetHit = false
+var float tfmFriH = na, var float tfmFriL = na
+var int  tfmFriHTime = 0, var int tfmFriLTime = 0
+var line lnTFMTarget = na, var line lnTFMStop = na
+var bool tTFMArm = false, var bool tTFMBreak = false
+tTFMArm   := false
+tTFMBreak := false
+// Setup-Check: nur am ERSTEN Bar des Montag-Tages
+if showTFM and isMon and newDay and not na(friH) and not na(thuH) and not na(friL)
+    line.delete(lnTFMTarget), line.delete(lnTFMStop)
+    if friH < thuH
+        tfmArmed     := true
+        tfmTargetHit := false
+        tfmFriH := friH, tfmFriL := friL, tfmFriHTime := friHTime, tfmFriLTime := friLTime
+        tTFMArm := true
+        if showTFMLines
+            lnTFMTarget := line.new(tfmFriLTime, tfmFriL, time, tfmFriL, xloc = xloc.bar_time, color = tfmColor, width = lineWidth + 1, style = line.style_dashed)
+            lnTFMStop   := line.new(tfmFriHTime, tfmFriH, time, tfmFriH, xloc = xloc.bar_time, color = color.new(tfmColor, 50), width = lineWidth, style = line.style_dotted)
+            label.new(tfmFriLTime, tfmFriL, 'TFM Target (Fri L)', xloc = xloc.bar_time, color = tfmColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+            label.new(tfmFriHTime, tfmFriH, 'TFM Stop (Fri H)',   xloc = xloc.bar_time, color = color.new(tfmColor, 30), textcolor = color.white, style = label.style_label_down, size = size.tiny)
+    else
+        tfmArmed := false
+// Linien mitziehen solange armiert
+if not na(lnTFMTarget) and showTFMLines and tfmArmed
+    line.set_x2(lnTFMTarget, time)
+if not na(lnTFMStop) and showTFMLines and tfmArmed
+    line.set_x2(lnTFMStop, time)
+// Pattern endet bei neuer Woche
+if newWeek
+    tfmArmed     := false
+    tfmTargetHit := false
+// Trigger: Mon (und optional Di) – Bruch von Fri L
+_tfmActive = tfmArmed and not tfmTargetHit and (isMon or (tfmIncludeTue and isTue))
+if showTFM and _tfmActive and not na(tfmFriL)
+    if low <= tfmFriL and isConfirmed(volume, currentAvgVol)
+        tfmTargetHit := true
+        tTFMBreak    := true
+        if showVolLabels
+            [tTxt, tClr, tSym] = getVolInfo(volume, currentAvgVol)
+            label.new(bar_index, low, tSym + ' ' + tTxt + ' TFM Target ✓', color = tfmColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+// ============================================================
+//  PREVIOUS WEEK HIGH/LOW
+// ============================================================
+var float pwH = na, var float pwL = na
+var int pwHTime = 0, var int pwLTime = 0
+var float twH = na, var float twL = na
+var int twHTime = 0, var int twLTime = 0
+var bool pwDrawn = false
+var array<line>  pwHLines = array.new<line>()
+var array<label> pwHLabs  = array.new<label>()
+var array<line>  pwLLines = array.new<line>()
+var array<label> pwLLabs  = array.new<label>()
+var bool pwHBrk = false, var bool pwLBrk = false
+var bool pwHOut = false, var bool pwLOut = false
+var bool pwHRet = false, var bool pwLRet = false
+if newWeek
+    pwH := twH, pwL := twL, pwHTime := twHTime, pwLTime := twLTime
+    twH := high, twL := low, twHTime := time, twLTime := time
+    pwDrawn := false
+    pwHBrk := false, pwLBrk := false, pwHOut := false, pwLOut := false, pwHRet := false, pwLRet := false
+    if showPrevWeek and not na(pwH)
+        drawLvl(pwHLines, pwHLabs, line.new(pwHTime, pwH, time, pwH, xloc = xloc.bar_time, color = prevWeekColor, width = lineWidth + 1), label.new(pwHTime, pwH, 'PWH', xloc = xloc.bar_time, color = prevWeekColor, textcolor = color.white, style = label.style_label_down, size = size.small), labelLookback)
+        drawLvl(pwLLines, pwLLabs, line.new(pwLTime, pwL, time, pwL, xloc = xloc.bar_time, color = prevWeekColor, width = lineWidth + 1), label.new(pwLTime, pwL, 'PWL', xloc = xloc.bar_time, color = prevWeekColor, textcolor = color.white, style = label.style_label_up, size = size.small), labelLookback)
+else
+    if high > nz(twH, high)
+        twH := high, twHTime := time
+    if low < nz(twL, low)
+        twL := low, twLTime := time
+if array.size(pwHLines) > 0 and showPrevWeek
+    line.set_x2(array.last(pwHLines), time)
+    line.set_x2(array.last(pwLLines), time)
+// ============================================================
+//  WEEKLY OPEN
+// ============================================================
+var float woPrice = na
+var array<line>  woLines = array.new<line>()
+var array<label> woLabs  = array.new<label>()
+if newWeek and showWeeklyOpen
+    woPrice := open
+    drawLvl(woLines, woLabs, line.new(time, woPrice, time, woPrice, xloc = xloc.bar_time, color = weeklyOpenColor, width = lineWidth, style = line.style_dotted), label.new(time, woPrice, 'WO', xloc = xloc.bar_time, color = weeklyOpenColor, textcolor = color.white, style = label.style_label_left, size = size.tiny), labelLookback)
+if array.size(woLines) > 0 and showWeeklyOpen
+    line.set_x2(array.last(woLines), time)
+// ============================================================
+//  MONTHLY OPEN
+// ============================================================
+newMonth = ta.change(time('M')) != 0
+var float moPrice = na
+var array<line>  moLines = array.new<line>()
+var array<label> moLabs  = array.new<label>()
+if newMonth and showMonthlyOpen
+    moPrice := open
+    drawLvl(moLines, moLabs, line.new(time, moPrice, time, moPrice, xloc = xloc.bar_time, color = monthlyOpenColor, width = lineWidth + 1, style = line.style_dotted), label.new(time, moPrice, 'MO', xloc = xloc.bar_time, color = monthlyOpenColor, textcolor = color.white, style = label.style_label_left, size = size.small), labelLookback)
+if array.size(moLines) > 0 and showMonthlyOpen
+    line.set_x2(array.last(moLines), time)
+// ============================================================
+//  PREVIOUS MONTH HIGH/LOW
+// ============================================================
+var float pmH = na, var float pmL = na
+var int pmHTime = 0, var int pmLTime = 0
+var float tmH = na, var float tmL = na
+var int tmHTime = 0, var int tmLTime = 0
+var array<line>  pmHLines = array.new<line>()
+var array<label> pmHLabs  = array.new<label>()
+var array<line>  pmLLines = array.new<line>()
+var array<label> pmLLabs  = array.new<label>()
+if newMonth
+    pmH := tmH, pmL := tmL, pmHTime := tmHTime, pmLTime := tmLTime
+    tmH := high, tmL := low, tmHTime := time, tmLTime := time
+    if showPrevMonth and not na(pmH)
+        drawLvl(pmHLines, pmHLabs, line.new(pmHTime, pmH, time, pmH, xloc = xloc.bar_time, color = prevMonthColor, width = lineWidth + 1), label.new(pmHTime, pmH, 'PMH', xloc = xloc.bar_time, color = prevMonthColor, textcolor = color.white, style = label.style_label_down, size = size.small), labelLookback)
+        drawLvl(pmLLines, pmLLabs, line.new(pmLTime, pmL, time, pmL, xloc = xloc.bar_time, color = prevMonthColor, width = lineWidth + 1), label.new(pmLTime, pmL, 'PML', xloc = xloc.bar_time, color = prevMonthColor, textcolor = color.white, style = label.style_label_up, size = size.small), labelLookback)
+else
+    if high > nz(tmH, high)
+        tmH := high, tmHTime := time
+    if low < nz(tmL, low)
+        tmL := low, tmLTime := time
+if array.size(pmHLines) > 0 and showPrevMonth
+    line.set_x2(array.last(pmHLines), time)
+    line.set_x2(array.last(pmLLines), time)
+// ============================================================
+//  TRIGGERS
+// ============================================================
+var bool tMonH = false, var bool tMonL = false
+var bool tMonHR = false, var bool tMonLR = false
+var bool tWedH = false, var bool tWedL = false
+var bool tWedHR = false, var bool tWedLR = false
+var bool tPWH = false, var bool tPWL = false
+var bool tPWHR = false, var bool tPWLR = false
+tMonH := false, tMonL := false, tMonHR := false, tMonLR := false
+tWedH := false, tWedL := false, tWedHR := false, tWedLR := false
+tPWH := false, tPWL := false, tPWHR := false, tPWLR := false
+// ============================================================
+//  BREAKOUT + RETEST: MONDAY
+// ============================================================
+if showMondayRange and monSet and not na(monH) and not isMon
+    if high > monH and not monHBrk and isConfirmed(volume, currentAvgVol)
+        monHBrk := true, tMonH := true
+        if showVolLabels
+            [t, c, s] = getVolInfo(volume, currentAvgVol)
+            label.new(bar_index, high, s + ' ' + t + ' Mon H ▲', color = c, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if monHBrk and not monHOut and low > monH
+        monHOut := true
+    if monHBrk and monHOut and not monHRet and low <= monH
+        monHRet := true
+        if showRetestAlerts
+            tMonHR := true
+        if showRetestLabels
+            label.new(bar_index, low, '↩ Mon H', color = mondayColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if low < monL and not monLBrk and isConfirmed(volume, currentAvgVol)
+        monLBrk := true, tMonL := true
+        if showVolLabels
+            [t, c, s] = getVolInfo(volume, currentAvgVol)
+            label.new(bar_index, low, s + ' ' + t + ' Mon L ▼', color = c, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if monLBrk and not monLOut and high < monL
+        monLOut := true
+    if monLBrk and monLOut and not monLRet and high >= monL
+        monLRet := true
+        if showRetestAlerts
+            tMonLR := true
+        if showRetestLabels
+            label.new(bar_index, high, '↩ Mon L', color = mondayColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+// ============================================================
+//  BREAKOUT + RETEST: WEDNESDAY
+// ============================================================
+if showWedPivot and wedSet and not na(wedH) and not isWed
+    if high > wedH and not wedHBrk and isConfirmed(volume, currentAvgVol)
+        wedHBrk := true, tWedH := true
+        if showVolLabels
+            [t, c, s] = getVolInfo(volume, currentAvgVol)
+            label.new(bar_index, high, s + ' ' + t + ' Wed H ▲', color = c, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if wedHBrk and not wedHOut and low > wedH
+        wedHOut := true
+    if wedHBrk and wedHOut and not wedHRet and low <= wedH
+        wedHRet := true
+        if showRetestAlerts
+            tWedHR := true
+        if showRetestLabels
+            label.new(bar_index, low, '↩ Wed H', color = wedColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if low < wedL and not wedLBrk and isConfirmed(volume, currentAvgVol)
+        wedLBrk := true, tWedL := true
+        if showVolLabels
+            [t, c, s] = getVolInfo(volume, currentAvgVol)
+            label.new(bar_index, low, s + ' ' + t + ' Wed L ▼', color = c, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if wedLBrk and not wedLOut and high < wedL
+        wedLOut := true
+    if wedLBrk and wedLOut and not wedLRet and high >= wedL
+        wedLRet := true
+        if showRetestAlerts
+            tWedLR := true
+        if showRetestLabels
+            label.new(bar_index, high, '↩ Wed L', color = wedColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+// ============================================================
+//  BREAKOUT + RETEST: PREVIOUS WEEK
+// ============================================================
+if showPrevWeek and not na(pwH)
+    if high > pwH and not pwHBrk and isConfirmed(volume, currentAvgVol)
+        pwHBrk := true, tPWH := true
+        if showVolLabels
+            [t, c, s] = getVolInfo(volume, currentAvgVol)
+            label.new(bar_index, high, s + ' ' + t + ' PWH ▲', color = c, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if pwHBrk and not pwHOut and low > pwH
+        pwHOut := true
+    if pwHBrk and pwHOut and not pwHRet and low <= pwH
+        pwHRet := true
+        if showRetestAlerts
+            tPWHR := true
+        if showRetestLabels
+            label.new(bar_index, low, '↩ PWH', color = prevWeekColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if low < pwL and not pwLBrk and isConfirmed(volume, currentAvgVol)
+        pwLBrk := true, tPWL := true
+        if showVolLabels
+            [t, c, s] = getVolInfo(volume, currentAvgVol)
+            label.new(bar_index, low, s + ' ' + t + ' PWL ▼', color = c, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if pwLBrk and not pwLOut and high < pwL
+        pwLOut := true
+    if pwLBrk and pwLOut and not pwLRet and high >= pwL
+        pwLRet := true
+        if showRetestAlerts
+            tPWLR := true
+        if showRetestLabels
+            label.new(bar_index, high, '↩ PWL', color = prevWeekColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+// ============================================================
+//  COT BIAS – v7.2: Proxy + Extreme + Projektion
+// ============================================================
+symLow = str.lower(syminfo.ticker)
+// v7.2: DAX/FTSE haben keinen CFTC-Report → Waehrungs-Proxy
+isDAX  = str.contains(symLow, "dax") or str.contains(symLow, "ger30") or str.contains(symLow, "ger40") or str.contains(symLow, "de30") or str.contains(symLow, "de40") or str.contains(symLow, "deu30") or str.contains(symLow, "deu40") or str.contains(symLow, "fdax") or str.contains(symLow, "gdaxi") or str.contains(symLow, "germany")
+isFTSE = str.contains(symLow, "ftse") or str.contains(symLow, "uk100") or str.contains(symLow, "ukx") or str.contains(symLow, "uk_100")
+getCFTCCode() =>
+    if str.contains(symLow, "xau") or str.contains(symLow, "gold") or syminfo.root == "GC"
+        "088691"
+    else if str.contains(symLow, "xag") or str.contains(symLow, "silver") or syminfo.root == "SI"
+        "084691"
+    else if str.contains(symLow, "copper") or syminfo.root == "HG"
+        "085692"
+    else if str.contains(symLow, "wti") or str.contains(symLow, "crude") or str.contains(symLow, "usoil") or syminfo.root == "CL"
+        "067651"
+    else if str.contains(symLow, "natgas") or str.contains(symLow, "ngas") or syminfo.root == "NG"
+        "023651"
+    else if isDAX
+        "099741"   // EUR-Proxy (Score wird invertiert)
+    else if isFTSE
+        "096742"   // GBP-Proxy (Score wird invertiert)
+    else if syminfo.basecurrency == "EUR" or str.contains(symLow, "eur")
+        "099741"
+    else if syminfo.basecurrency == "GBP" or str.contains(symLow, "gbp")
+        "096742"
+    else if str.contains(symLow, "jpy")
+        "097741"
+    else if syminfo.basecurrency == "AUD" or str.contains(symLow, "aud")
+        "232741"
+    else if str.contains(symLow, "cad")
+        "090741"
+    else if str.contains(symLow, "chf")
+        "092741"
+    else if str.contains(symLow, "nzd")
+        "112741"
+    else if str.contains(symLow, "spx") or str.contains(symLow, "sp500") or str.contains(symLow, "us500") or syminfo.root == "ES"
+        "13874+"
+    else if str.contains(symLow, "nas") or str.contains(symLow, "ndx") or str.contains(symLow, "us100") or syminfo.root == "NQ"
+        "20974+"
+    else if str.contains(symLow, "dji") or str.contains(symLow, "us30") or str.contains(symLow, "dow") or syminfo.root == "YM"
+        "12460+"
+    else if str.contains(symLow, "rut") or str.contains(symLow, "us2000") or syminfo.root == "RTY"
+        "239742"
+    else
+        ""
+autoCode = getCFTCCode()
+cfCode = cotMode == 'Manuell' and manCode != '' ? manCode : autoCode
+hasCOT = cfCode != '' and showCOT
+proxyInvert = isDAX or isFTSE
+// COT via Library
+mmLong  = hasCOT ? cot.requestCommitmentOfTraders(COTType = 'Legacy', CFTCCode = cfCode, includeOptions = false, metricName = 'Noncommercial Positions', metricDirection = 'Long',  metricType = 'All') : na
+mmShort = hasCOT ? cot.requestCommitmentOfTraders(COTType = 'Legacy', CFTCCode = cfCode, includeOptions = false, metricName = 'Noncommercial Positions', metricDirection = 'Short', metricType = 'All') : na
+rtLong  = hasCOT ? cot.requestCommitmentOfTraders(COTType = 'Legacy', CFTCCode = cfCode, includeOptions = false, metricName = 'Nonreportable Positions',  metricDirection = 'Long',  metricType = 'All') : na
+rtShort = hasCOT ? cot.requestCommitmentOfTraders(COTType = 'Legacy', CFTCCode = cfCode, includeOptions = false, metricName = 'Nonreportable Positions',  metricDirection = 'Short', metricType = 'All') : na
+cmLong  = hasCOT ? cot.requestCommitmentOfTraders(COTType = 'Legacy', CFTCCode = cfCode, includeOptions = false, metricName = 'Commercial Positions',     metricDirection = 'Long',  metricType = 'All') : na
+cmShort = hasCOT ? cot.requestCommitmentOfTraders(COTType = 'Legacy', CFTCCode = cfCode, includeOptions = false, metricName = 'Commercial Positions',     metricDirection = 'Short', metricType = 'All') : na
+// Net Positionen
+mmNet = nz(mmLong) - nz(mmShort)
+rtNet = nz(rtLong) - nz(rtShort)
+cmNet = nz(cmLong) - nz(cmShort)
+// ============================================================
+//  v7.2: EXTREME-ERKENNUNG (Percentile-Rank MM Netto)
+//  Historischer Vergleich ueber ~2 Jahre (104 Wochen)
+//  Extreme (Top/Bottom-Dezil): MM wird kontraer
+//  Crowded (10 Pctile darunter): MM wird gedaempft
+// ============================================================
+var array<float> mmNetHist = array.new_float(0)
+if ta.change(time('W')) != 0 and not na(mmNet)
+    array.push(mmNetHist, nz(mmNet[1], mmNet))
+    if array.size(mmNetHist) > 104
+        array.shift(mmNetHist)
+mmPctile = 50.0
+_hSz = array.size(mmNetHist)
+_cntBelow = 0
+if _hSz > 10
+    for _i = 0 to _hSz - 1
+        if array.get(mmNetHist, _i) < mmNet
+            _cntBelow += 1
+    mmPctile := _cntBelow * 100.0 / _hSz
+mmExtreme = mmPctile > cotExtPct or mmPctile < (100 - cotExtPct)
+mmCrowded = not mmExtreme and (mmPctile > (cotExtPct - 10) or mmPctile < (100 - cotExtPct + 10))
+// ============================================================
+//  COT WOCHENÄNDERUNG – TF-UNABHÄNGIG (v7.1 FIX)
+// ============================================================
+var float mmChg = 0.0
+var float rtChg = 0.0
+var float cmChg_val = 0.0
+bool mmChanged = not na(mmNet) and not na(mmNet[1]) and mmNet != mmNet[1]
+bool rtChanged = not na(rtNet) and not na(rtNet[1]) and rtNet != rtNet[1]
+bool cmChanged = not na(cmNet) and not na(cmNet[1]) and cmNet != cmNet[1]
+if mmChanged
+    mmChg := mmNet - mmNet[1]
+if rtChanged
+    rtChg := rtNet - rtNet[1]
+if cmChanged
+    cmChg_val := cmNet - cmNet[1]
+// ============================================================
+//  BIAS LOGIK – v7.2: Extreme-Daempfung + Proxy-Inversion
+// ============================================================
+// Schwellwerte Wochen-Aenderung:
+//   < 5% = Rauschen    5-15% = normal (x1)
+//   15-30% = stark (x2)    > 30% = massiv (x3)
+mmPct = mmNet != 0 ? math.abs(mmChg / mmNet) * 100 : 0.0
+rtPct = rtNet != 0 ? math.abs(rtChg / rtNet) * 100 : 0.0
+cmPct = cmNet != 0 ? math.abs(cmChg_val / cmNet) * 100 : 0.0
+getChgWeight(pct) =>
+    pct < 5 ? 0 : pct < 15 ? 1 : pct < 30 ? 2 : 3
+mmChgW = getChgWeight(mmPct)
+rtChgW = getChgWeight(rtPct)
+cmChgW = getChgWeight(cmPct)
+// === MANAGED MONEY – v7.2: Extreme-Daempfung ===
+//   Normal:   Gewicht 2 direktional (folgen)
+//   Crowded:  Gewicht 1 (gedaempft – Vorsicht)
+//   Extreme:  Gewicht -2 kontraer (ueberfuellter Trade)
+mmPosScore = mmExtreme ? (mmNet > 0 ? -2 : 2) : mmCrowded ? (mmNet > 0 ? 1 : -1) : (mmNet > 0 ? 2 : mmNet < 0 ? -2 : 0)
+mmChgDir = mmChg > 0 ? 1 : mmChg < 0 ? -1 : 0
+mmChgScore = mmChgDir * mmChgW
+// === RETAIL (Contra – invertiert) ===
+rtPosScore = rtNet > 0 ? -1 : rtNet < 0 ? 1 : 0
+rtChgDir = rtChg > 0 ? -1 : rtChg < 0 ? 1 : 0
+rtChgScore = rtChgDir * rtChgW
+// === COMMERCIALS (Contra – invertiert) ===
+cmPosScore = cmNet > 0 ? -1 : cmNet < 0 ? 1 : 0
+cmChgDir = cmChg_val > 0 ? -1 : cmChg_val < 0 ? 1 : 0
+cmChgScore = cmChgDir * cmChgW
+// === GESAMTSCORE – v7.2: Proxy-Inversion fuer DAX/FTSE ===
+// DAX nutzt EUR-COT invertiert: starker EUR-Long = eher bearish DAX
+// FTSE nutzt GBP-COT invertiert: starker GBP-Long = eher bearish FTSE
+rawScore = mmPosScore + mmChgScore + rtPosScore + rtChgScore + cmPosScore + cmChgScore
+biasScore = proxyInvert ? -rawScore : rawScore
+// Bias Stufen
+strongBull = biasScore >= 5
+normalBull = biasScore >= 3 and biasScore < 5
+weakBull   = biasScore >= 1 and biasScore < 3
+strongBear = biasScore <= -5
+normalBear = biasScore <= -3 and biasScore > -5
+weakBear   = biasScore <= -1 and biasScore > -3
+// ============================================================
+//  v7.2: HINTERGRUND – Datenwoche vs Projektion
+//  Datenwoche (COT-Daten frisch aktualisiert): gruen/rot
+//  Projektion (Folgewoche, forward-filled): grau + transparenter
+// ============================================================
+var float _prevCotSum = na
+var bool _cotFresh = false
+if ta.change(time('W')) != 0
+    _cotFresh := false
+if hasCOT and not na(mmLong)
+    _cotSum = nz(mmLong) + nz(mmShort) + nz(rtLong) + nz(rtShort) + nz(cmLong) + nz(cmShort)
+    if na(_prevCotSum) or _cotSum != _prevCotSum
+        _cotFresh := true
+        _prevCotSum := _cotSum
+_isProj = not _cotFresh
+_pAdd = _isProj ? 4 : 0
+_bgG = _isProj ? color.gray : color.green
+_bgR = _isProj ? color.gray : color.red
+cotBg = hasCOT and not na(mmLong) ? (strongBull ? color.new(_bgG, bgAlpha - 7 + _pAdd) :
+     strongBear ? color.new(_bgR, bgAlpha - 7 + _pAdd) :
+     normalBull ? color.new(_bgG, bgAlpha + _pAdd) :
+     normalBear ? color.new(_bgR, bgAlpha + _pAdd) :
+     weakBull ? color.new(_bgG, bgAlpha + 3 + _pAdd) :
+     weakBear ? color.new(_bgR, bgAlpha + 3 + _pAdd) : na) : na
+bgcolor(cotBg)
+// ============================================================
+//  COT TABLE – v7.2: Extreme/Proxy/Projektion Status
+// ============================================================
+if showCOT and showCOTtbl and barstate.islast
+    var table ct = table.new(position.bottom_right, 4, 5, border_width = 1)
+    bg = color.new(color.gray, 80)
+    hd = color.new(color.blue, 60)
+    _cotHdr = isDAX ? 'COT [EUR]' : isFTSE ? 'COT [GBP]' : 'COT'
+    table.cell(ct, 0, 0, _cotHdr, text_color = color.white, bgcolor = hd, text_size = size.small)
+    table.cell(ct, 1, 0, 'Net', text_color = color.white, bgcolor = hd, text_size = size.small)
+    table.cell(ct, 2, 0, 'Δ Woche', text_color = color.white, bgcolor = hd, text_size = size.small)
+    table.cell(ct, 3, 0, 'Signal', text_color = color.white, bgcolor = hd, text_size = size.small)
+    if not hasCOT or na(mmLong)
+        table.cell(ct, 0, 1, 'Keine COT', text_color = color.orange, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 1, 1, cfCode == '' ? 'Kein CFTC' : 'N/A', text_color = color.gray, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 2, 1, '', bgcolor = bg, text_size = size.small)
+        table.cell(ct, 3, 1, '', bgcolor = bg, text_size = size.small)
+    else
+        // v7.2: MM-Zeile zeigt Extreme-Status
+        mmDir = mmPct < 5 ? '(< 5%)' : mmChg > 0 ? '→ LONG' : mmChg < 0 ? '→ SHORT' : '→ FLAT'
+        mmDirC = mmPct < 5 ? color.gray : mmChg > 0 ? color.lime : mmChg < 0 ? color.red : color.gray
+        _mmLabel = mmExtreme ? 'LgSpec ⚠' : mmCrowded ? 'LgSpec △' : 'LgSpec'
+        _mmLabelC = mmExtreme ? color.yellow : mmCrowded ? color.orange : color.white
+        table.cell(ct, 0, 1, _mmLabel, text_color = _mmLabelC, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 1, 1, str.tostring(mmNet, '#,###'), text_color = mmNet > 0 ? color.lime : color.red, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 2, 1, (mmChg > 0 ? '+' : '') + str.tostring(mmChg, '#,###'), text_color = mmChg > 0 ? color.lime : color.red, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 3, 1, mmDir, text_color = mmDirC, bgcolor = bg, text_size = size.small)
+        rtSig = rtPct < 5 ? '(< 5%)' : rtChg > 0 ? 'LONG(c→S)' : rtChg < 0 ? 'SHORT(c→L)' : 'FLAT'
+        rtSigC = rtPct < 5 ? color.gray : rtChg > 0 ? color.red : rtChg < 0 ? color.lime : color.gray
+        table.cell(ct, 0, 2, 'Retail', text_color = color.white, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 1, 2, str.tostring(rtNet, '#,###'), text_color = rtNet > 0 ? color.lime : color.red, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 2, 2, (rtChg > 0 ? '+' : '') + str.tostring(rtChg, '#,###'), text_color = rtChg > 0 ? color.lime : color.red, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 3, 2, rtSig, text_color = rtSigC, bgcolor = bg, text_size = size.small)
+        cmChg = cmChg_val
+        table.cell(ct, 0, 3, 'Comm', text_color = color.white, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 1, 3, str.tostring(cmNet, '#,###'), text_color = cmNet > 0 ? color.lime : color.red, bgcolor = bg, text_size = size.small)
+        cmSig = cmPct < 5 ? '(< 5%)' : cmChg > 0 ? 'LONG(c→S)' : cmChg < 0 ? 'SHORT(c→L)' : 'FLAT'
+        cmSigC = cmPct < 5 ? color.gray : cmChg > 0 ? color.red : cmChg < 0 ? color.lime : color.gray
+        table.cell(ct, 2, 3, (cmChg > 0 ? '+' : '') + str.tostring(cmChg, '#,###'), text_color = cmChg > 0 ? color.lime : color.red, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 3, 3, cmSig, text_color = cmSigC, bgcolor = bg, text_size = size.small)
+        // v7.2: BIAS-Zeile mit Extreme/Proxy/Projektion-Info
+        biasTxt = strongBull ? 'STRONG LONG' : strongBear ? 'STRONG SHORT' : normalBull ? 'LONG' : normalBear ? 'SHORT' : weakBull ? 'weak long' : weakBear ? 'weak short' : 'NEUTRAL'
+        biasClr = strongBull or normalBull or weakBull ? color.lime : strongBear or normalBear or weakBear ? color.red : color.gray
+        // Extreme ueberschreibt Bias-Farbe
+        _biasClr = mmExtreme ? color.yellow : biasClr
+        scoreTxt = str.tostring(biasScore)
+        // Status-Zelle: Extreme + Projektion
+        _status = mmExtreme ? 'EXTREM' : mmCrowded ? 'CROWDED' : ''
+        _status := _status + (_isProj ? (_status != '' ? ' ' : '') + '(Proj)' : ' (Akt)')
+        _statusC = mmExtreme ? color.yellow : mmCrowded ? color.orange : _isProj ? color.gray : color.white
+        table.cell(ct, 0, 4, proxyInvert ? 'BIAS*' : 'BIAS', text_color = color.white, bgcolor = hd, text_size = size.small)
+        table.cell(ct, 1, 4, biasTxt, text_color = _biasClr, bgcolor = hd, text_size = size.small)
+        table.cell(ct, 2, 4, 'Score ' + scoreTxt, text_color = _biasClr, bgcolor = hd, text_size = size.small)
+        table.cell(ct, 3, 4, _status, text_color = _statusC, bgcolor = hd, text_size = size.small)
+// ============================================================
+//  ALERTS
+// ============================================================
+anyBrk = tMonH or tMonL or tWedH or tWedL or tPWH or tPWL or tTFMBreak
+anyRet = tMonHR or tMonLR or tWedHR or tWedLR or tPWHR or tPWLR
+anyTFM = tTFMArm or tTFMBreak
+if tMonH
+    alert(syminfo.ticker + ' – Mon HIGH Break @ ' + str.tostring(close), alert.freq_once_per_bar)
+if tMonL
+    alert(syminfo.ticker + ' – Mon LOW Break @ ' + str.tostring(close), alert.freq_once_per_bar)
+if tWedH
+    alert(syminfo.ticker + ' – Wed HIGH Break @ ' + str.tostring(close), alert.freq_once_per_bar)
+if tWedL
+    alert(syminfo.ticker + ' – Wed LOW Break @ ' + str.tostring(close), alert.freq_once_per_bar)
+if tPWH
+    alert(syminfo.ticker + ' – PWH Break @ ' + str.tostring(close), alert.freq_once_per_bar)
+if tPWL
+    alert(syminfo.ticker + ' – PWL Break @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and tMonHR
+    alert(syminfo.ticker + ' – Mon H Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and tMonLR
+    alert(syminfo.ticker + ' – Mon L Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and tWedHR
+    alert(syminfo.ticker + ' – Wed H Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and tWedLR
+    alert(syminfo.ticker + ' – Wed L Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and tPWHR
+    alert(syminfo.ticker + ' – PWH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and tPWLR
+    alert(syminfo.ticker + ' – PWL Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+// --- TFM (Hougaard) ---
+if tfmAlertOnArm and tTFMArm
+    alert(syminfo.ticker + ' – TFM Setup ARMED (Fri H < Thu H). Ziel: Fri L = ' + str.tostring(tfmFriL), alert.freq_once_per_bar)
+if tTFMBreak
+    alert(syminfo.ticker + ' – ▼ TFM Target ERREICHT (Fri L gebrochen) @ ' + str.tostring(close), alert.freq_once_per_bar)
+alertcondition(anyBrk, title = 'ALLE Breaks', message = '{{ticker}} – Break @ {{close}}')
+alertcondition(anyRet, title = 'ALLE Retests', message = '{{ticker}} – Retest @ {{close}}')
+alertcondition(anyBrk or anyRet, title = 'Alle Signale', message = '{{ticker}} – Signal @ {{close}}')
+alertcondition(tTFMArm,   title = 'TFM Setup ARMED',  message = '{{ticker}} – TFM armed (Fri H < Thu H) @ {{close}}')
+alertcondition(tTFMBreak, title = 'TFM Target HIT',   message = '{{ticker}} – TFM Fri L erreicht @ {{close}}')
+alertcondition(anyTFM,    title = 'TFM (alle)',       message = '{{ticker}} – TFM Signal @ {{close}}')

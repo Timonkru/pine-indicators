@@ -1,0 +1,1122 @@
+//@version=6
+indicator('Kasse Alerts', overlay = true, max_lines_count = 30, max_boxes_count = 15, max_labels_count = 60)
+
+// ============================================================
+//  🎛️ DISPLAY MASTER
+// ============================================================
+showLabels    = input.bool(true,  '🏷️ Alle Labels anzeigen (Master)', group = '🎛️ Display', tooltip = 'Globaler Schalter: deaktiviert alle Label-Annotationen im Chart (Volumen %, Retests, Outlier-Warnungen, Event-Signale etc.). Linien/Boxen/Alerts bleiben aktiv.')
+
+// Helper: Labels werden nur erzeugt wenn Master aktiv
+lbl(x, y, txt, color, textcolor, style, size) =>
+    showLabels ? label.new(x = x, y = y, text = txt, color = color, textcolor = textcolor, style = style, size = size) : na
+
+// === EINSTELLUNGEN 15-MIN ===
+showEU       = input.bool(true,  'EU Märkte aktiv',           group = '📊 15-Min Candles (EU/US)')
+showUS       = input.bool(true,  'US Märkte & Gold aktiv',    group = '📊 15-Min Candles (EU/US)')
+showEU_2nd15 = input.bool(true,  'EU 2. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
+showEU_7th15 = input.bool(true,  'EU 7. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
+showUS_2nd15 = input.bool(true,  'US 2. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
+showUS_7th15 = input.bool(true,  'US 7. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
+euColor      = input.color(color.blue,   'EU Farbe',          group = '📊 15-Min Candles (EU/US)')
+usColor      = input.color(color.orange, 'US/Gold Farbe',     group = '📊 15-Min Candles (EU/US)')
+lineWidth    = input.int(2, 'Linienbreite', minval = 1, maxval = 5, group = '📊 15-Min Candles (EU/US)')
+
+// === EINSTELLUNGEN HK50 ===
+showHK50     = input.bool(true,  'HK50 aktiv',                group = '🌏 HK50 Spezial')
+showHK_230   = input.bool(true,  'HK50 02:30 Candle (15m)',   group = '🌏 HK50 Spezial')
+hkColor      = input.color(color.purple, 'HK50 Farbe',        group = '🌏 HK50 Spezial')
+
+// === EINSTELLUNGEN JPN225 ===
+showJPN      = input.bool(true,  'JPN225 aktiv',              group = '🗾 JPN225 Spezial')
+showJPN_050  = input.bool(true,  'JPN225 00:50 Candle (10m)', group = '🗾 JPN225 Spezial')
+jpnColor     = input.color(color.teal,   'JPN225 Farbe',      group = '🗾 JPN225 Spezial')
+
+// === EINSTELLUNGEN GOLD SESSION CANDLES ===
+showGoldSession = input.bool(true, 'Gold Session Candles aktiv', group = '🥇 Gold/Commodities Sessions')
+showGold_0145   = input.bool(true, 'Gold 01:45 (nach NY-Asia)', group = '🥇 Gold/Commodities Sessions', tooltip = 'Nach NY-Asia ruhige Phase, Shanghai wacht auf')
+showGold_1415   = input.bool(true, 'Gold 14:15 (nach EU-Lunch)', group = '🥇 Gold/Commodities Sessions', tooltip = 'Nach EU-Lunch, vor US Open')
+goldSessionColor = input.color(color.orange, 'Gold Session Farbe', group = '🥇 Gold/Commodities Sessions')
+
+// === EINSTELLUNGEN FOREX SESSION CANDLES ===
+showForexSession = input.bool(true, 'Forex Session Candles aktiv', group = '💱 Forex Sessions')
+showFX_0815      = input.bool(true, 'FX 08:15 (nach Pre-London)', group = '💱 Forex Sessions', tooltip = 'Nach Asia/Pre-London ruhige Phase, London Interbank startet')
+forexSessionColor = input.color(color.purple, 'Forex Session Farbe', group = '💱 Forex Sessions')
+
+// === EINSTELLUNGEN 5-MIN ===
+show5MinEU   = input.bool(true,  'EU 5-Min Levels',           group = '📈 5-Min Candles (1. & 4.)')
+show5MinUS   = input.bool(true,  'US 5-Min Levels',           group = '📈 5-Min Candles (1. & 4.)')
+showEU1stLow = input.bool(true,  'Zeige EU 1. Candle Low',    group = '📈 5-Min Candles (1. & 4.)')
+showUS1stLow = input.bool(true,  'Zeige US 1. Candle Low',    group = '📈 5-Min Candles (1. & 4.)')
+eu5MinColor  = input.color(color.green, 'EU 5-Min Farbe',     group = '📈 5-Min Candles (1. & 4.)')
+us5MinColor  = input.color(color.red,   'US 5-Min Farbe',     group = '📈 5-Min Candles (1. & 4.)')
+
+// === 8 BALL & TEENAGER (Tom Hougaard) ===
+show8Ball    = input.bool(true,  '8 Ball & Teenager aktiv (Tom Hougaard)',  group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Markiert 8. (8 Ball) und 13. (Teenager) 5-Min Kerze nach Open. Originalstrategie: FTSE/Indizes.')
+show8BallEU  = input.bool(true,  'EU 8 Ball  (5-Min Bar 8 → 09:35-09:40)', group = '🎱 8 Ball & Teenager (Hougaard)')
+showTeenEU   = input.bool(true,  'EU Teenager (5-Min Bar 13 → 10:00-10:05)', group = '🎱 8 Ball & Teenager (Hougaard)')
+show8BallUS  = input.bool(true,  'US 8 Ball  (5-Min Bar 8 → 16:05-16:10)', group = '🎱 8 Ball & Teenager (Hougaard)')
+showTeenUS   = input.bool(true,  'US Teenager (5-Min Bar 13 → 16:30-16:35)', group = '🎱 8 Ball & Teenager (Hougaard)')
+orderlyMult  = input.float(1.5, 'Orderly-Filter (max. Range vs. Avg)', minval = 1.0, maxval = 5.0, step = 0.1, group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Tom Hougaards Regel: Bar nur handeln wenn ihre Range maximal diesen Faktor mal dem Durchschnitt der vorherigen Bars beträgt. Outlier-Bars werden übersprungen.')
+ballColor    = input.color(color.fuchsia, '8 Ball Farbe',  group = '🎱 8 Ball & Teenager (Hougaard)')
+teenColor    = input.color(color.aqua,    'Teenager Farbe', group = '🎱 8 Ball & Teenager (Hougaard)')
+
+// === NEU: PRE-MARKET LEVELS ===
+showPreMarket30 = input.bool(true, 'Zeige 30-Min Low vor Kasse', group = '🌅 Pre-Market Levels')
+showPreMarket10 = input.bool(true, 'Zeige 10-Min High/Low vor Kasse', group = '🌅 Pre-Market Levels')
+showPreMarketLabels = input.bool(true, 'Pre-Market Labels anzeigen', group = '🌅 Pre-Market Levels', tooltip = 'Nur die Text-Labels (Linien/Alerts bleiben aktiv)')
+preMarket30Color = input.color(color.purple, '30-Min Level Farbe', group = '🌅 Pre-Market Levels')
+preMarket10Color = input.color(color.yellow, '10-Min Level Farbe', group = '🌅 Pre-Market Levels')
+
+// === SPEZIAL-EVENTS (FOMC/NFP) - RULE OF 4 + PRESS CONFERENCE ===
+enableSpecialEvent = input.bool(false, 'Event-Modus aktiv', group = '📰 FOMC/NFP Events')
+eventHour = input.int(20, 'News Release Stunde (MEZ)', minval = 0, maxval = 23, group = '📰 FOMC/NFP Events', tooltip = 'FOMC: 20:00 MEZ (14:00 Eastern)')
+eventMinute = input.int(0, 'News Release Minute', minval = 0, maxval = 59, group = '📰 FOMC/NFP Events', tooltip = 'Normalerweise :00 (volle Stunde)')
+showRuleOf4 = input.bool(true, 'Rule of 4 Bar (10-Min)', group = '📰 FOMC/NFP Events', tooltip = 'Die 4. 10-Min Kerze nach News Release (30 Min danach)')
+showPressConf5Min = input.bool(true, 'Press Conference Bar (5-Min)', group = '📰 FOMC/NFP Events', tooltip = 'Die 5-Min Kerze 30 Min nach News Release')
+eventColor = input.color(color.fuchsia, 'Event Level Farbe', group = '📰 FOMC/NFP Events')
+ruleOf4Color = input.color(color.yellow, 'Rule of 4 Farbe', group = '📰 FOMC/NFP Events')
+eventColorLong = input.color(color.green, 'Long Signal Farbe', group = '📰 FOMC/NFP Events')
+eventColorShort = input.color(color.red, 'Short Signal Farbe', group = '📰 FOMC/NFP Events')
+
+// === VOLUMEN-ANALYSE ===
+showVolEU1st  = input.bool(true, 'EU 1. Candle Volumen',      group = '📉 Volumen-Analyse')
+showVolUS1st  = input.bool(true, 'US 1. Candle Volumen',      group = '📉 Volumen-Analyse')
+showVolEU4th  = input.bool(true, 'EU 4. Candle Durchbrüche',  group = '📉 Volumen-Analyse')
+showVolUS4th  = input.bool(true, 'US 4. Candle Durchbrüche',  group = '📉 Volumen-Analyse')
+showVol15Min  = input.bool(true, '15-Min Durchbrüche',        group = '📉 Volumen-Analyse')
+volThreshold  = input.float(1.5, 'Volumen-Schwellenwert (x Durchschnitt)', minval = 1.0, maxval = 3.0, step = 0.1, group = '📉 Volumen-Analyse')
+volPeriod     = input.int(20, 'Durchschnitts-Periode', minval = 5, maxval = 100, group = '📉 Volumen-Analyse')
+
+// === DURCHBRUCHS-BESTÄTIGUNG ===
+breakoutMode        = input.string('Volumen-Bestätigt', 'Durchbruchs-Modus', options = ['Sofort', 'Volumen-Bestätigt'], group = '⚡ Durchbruchs-Bestätigung')
+breakoutVolThreshold = input.float(1.0, 'Min. Volumen für Durchbruch (x Durchschnitt)', minval = 0.5, maxval = 2.0, step = 0.1, group = '⚡ Durchbruchs-Bestätigung', tooltip = 'Durchbruch wird nur gezählt wenn Volumen über diesem Wert liegt')
+
+// === RETEST-EINSTELLUNGEN ===
+showRetestLabels = input.bool(true, 'Retest Labels anzeigen', group = '↩️ Retest-Einstellungen')
+showRetestAlerts = input.bool(true, 'Retest Alerts aktivieren', group = '↩️ Retest-Einstellungen')
+retestLabelColorEU = input.color(color.blue, 'EU Retest Farbe', group = '↩️ Retest-Einstellungen')
+retestLabelColorUS = input.color(color.orange, 'US Retest Farbe', group = '↩️ Retest-Einstellungen')
+
+// === ZEITZONE & ZEITUMSTELLUNG ===
+// EU-Zeiten (9h, 10h, 8h etc.) brauchen keinen Shift — Europe/Berlin passt automatisch.
+// US-Zeiten (15h, 16h, 17h, 14h in Berliner Zeit) muessen waehrend DST-Luecke verschoben werden.
+dstMode = input.string('Auto', 'DST-Modus', options = ['Auto', 'Manuell'], group = '🕐 Zeitzone & DST', tooltip = 'Auto = erkennt US/EU DST-Verschiebung automatisch anhand der Zeitdifferenz Berlin↔NY')
+manualEUDST = input.bool(true, 'EU Sommerzeit (CET→CEST)', group = '🕐 Zeitzone & DST', tooltip = 'Nur bei Manuell: EU aktuell in Sommerzeit?')
+manualUSDST = input.bool(true, 'US Sommerzeit (EST→EDT)', group = '🕐 Zeitzone & DST', tooltip = 'Nur bei Manuell: US aktuell in Sommerzeit?')
+
+tz = 'Europe/Berlin'
+
+// Auto-Erkennung: Berlin-NY Differenz → Shift fuer US-Zeiten
+// 6h = beide gleich (beide Winter oder beide Sommer) → kein Shift
+// 5h = US schon Sommer, EU noch Winter → US-Zeiten -1h frueher
+// 7h = EU schon Sommer, US noch Winter → US-Zeiten +1h spaeter
+f_autoUSDSTShift() =>
+    berlinH = hour(time, "Europe/Berlin")
+    nyH     = hour(time, "America/New_York")
+    diff    = (berlinH - nyH + 24) % 24
+    diff == 5 ? -1 : diff == 7 ? 1 : 0
+
+f_manualUSDSTShift() =>
+    if manualUSDST and not manualEUDST
+        -1   // US Sommer, EU Winter → US-Zeiten 1h frueher
+    else if not manualUSDST and manualEUDST
+        1    // EU Sommer, US Winter → US-Zeiten 1h spaeter
+    else
+        0    // beide gleich → kein Shift
+
+usDSTShift = dstMode == 'Auto' ? f_autoUSDSTShift() : f_manualUSDSTShift()
+getUSHour(h) => (h + usDSTShift + 24) % 24
+
+// EU DST Shift: 0 in CET (Winter, UTC+1), 1 in CEST (Sommer, UTC+2)
+// Asiatische Märkte (HK50, JPN225) haben keine Sommerzeit → erscheinen 1h später in Berlin
+euDSTShift = (hour(time, "Europe/Berlin") - hour(time, "UTC") + 24) % 24 == 2 ? 1 : 0
+getAsianHour(h) => (h + euDSTShift + 24) % 24
+
+// Symbol-Erkennung
+isHK50Symbol = str.contains(syminfo.ticker, "HK") or str.contains(syminfo.ticker, "HSI") or str.contains(syminfo.ticker, "HK50")
+isJPN225Symbol = str.contains(syminfo.ticker, "JPN") or str.contains(syminfo.ticker, "JP225") or str.contains(syminfo.ticker, "NKY") or str.contains(syminfo.ticker, "NIK")
+tickerLower = str.lower(syminfo.ticker)
+isGoldSymbol = str.contains(tickerLower, "xau") or str.contains(tickerLower, "gold") or str.contains(tickerLower, "gc")
+isSilverSymbol = str.contains(tickerLower, "xag") or str.contains(tickerLower, "silver")
+isCopperSymbol = str.contains(tickerLower, "copper") or str.contains(tickerLower, "hg") or str.contains(tickerLower, "xcu")
+isCommoditySymbol = isGoldSymbol or isSilverSymbol or isCopperSymbol
+isForexSymbol = (str.contains(tickerLower, "eur") or str.contains(tickerLower, "gbp") or str.contains(tickerLower, "jpy") or str.contains(tickerLower, "aud") or str.contains(tickerLower, "nzd") or str.contains(tickerLower, "cad") or str.contains(tickerLower, "chf")) and not isCommoditySymbol
+
+currentAvgVol = ta.sma(volume, volPeriod)
+getVolLabel(vol, avgVol) =>
+    relVol   = vol / avgVol * 100
+    volText  = str.tostring(math.round(relVol)) + '% Vol'
+    volColor = vol > avgVol * volThreshold ? color.green : vol > avgVol ? color.orange : color.red
+    volSymbol = vol > avgVol * volThreshold ? '✓ ' : vol > avgVol ? '⚠ ' : '✗ '
+    [volText, volColor, volSymbol, relVol]
+isBreakoutConfirmed(vol, avgVol) =>
+    breakoutMode == 'Sofort' or vol >= avgVol * breakoutVolThreshold
+
+// === 15-MINUTEN CANDLES ===
+[time15, high15, low15, open15, close15, vol15] = request.security(syminfo.tickerid, '15', [time, high, low, open, close, volume])
+avgVol15 = ta.sma(vol15, volPeriod)
+
+isEU15_2nd = hour(time15, tz) == 9  and minute(time15, tz) == 15
+isUS15_2nd = hour(time15, tz) == getUSHour(15) and minute(time15, tz) == 45
+isHK15_230 = hour(time15, tz) == getAsianHour(2)  and minute(time15, tz) == 30
+isEU15_7th = hour(time15, tz) == 10 and minute(time15, tz) == 30
+isUS15_7th = hour(time15, tz) == getUSHour(17) and minute(time15, tz) == 0
+
+isEU15_2nd_closed = hour(time15, tz) == 9  and minute(time15, tz) == 30
+isUS15_2nd_closed = hour(time15, tz) == getUSHour(16) and minute(time15, tz) == 0
+isHK15_230_closed = hour(time15, tz) == getAsianHour(2)  and minute(time15, tz) == 45
+isEU15_7th_closed = hour(time15, tz) == 10 and minute(time15, tz) == 45
+isUS15_7th_closed = hour(time15, tz) == getUSHour(17) and minute(time15, tz) == 15
+
+// --- EU 15m 2. Candle ---
+var float euH15 = na, var float euL15 = na
+var line euHighLine = na, var line euLowLine = na, var box euBox = na
+var bool euHighBroken = false, var bool euLowBroken = false
+var bool euHighClosedOutside = false, var bool euLowClosedOutside = false
+var bool euHighRetested = false, var bool euLowRetested = false, var bool euLevelsReady = false
+
+// --- EU 15m 7. Candle ---
+var float euH15_7 = na, var float euL15_7 = na
+var line euHighLine_7 = na, var line euLowLine_7 = na, var box euBox_7 = na
+var bool euHighBroken_7 = false, var bool euLowBroken_7 = false
+var bool euHighClosedOutside_7 = false, var bool euLowClosedOutside_7 = false
+var bool euHighRetested_7 = false, var bool euLowRetested_7 = false, var bool euLevelsReady_7 = false
+
+// --- US 15m 2. Candle ---
+var float usH15 = na, var float usL15 = na
+var line usHighLine = na, var line usLowLine = na, var box usBox = na
+var bool usHighBroken = false, var bool usLowBroken = false
+var bool usHighClosedOutside = false, var bool usLowClosedOutside = false
+var bool usHighRetested = false, var bool usLowRetested = false, var bool usLevelsReady = false
+
+// --- US 15m 7. Candle ---
+var float usH15_7 = na, var float usL15_7 = na
+var line usHighLine_7 = na, var line usLowLine_7 = na, var box usBox_7 = na
+var bool usHighBroken_7 = false, var bool usLowBroken_7 = false
+var bool usHighClosedOutside_7 = false, var bool usLowClosedOutside_7 = false
+var bool usHighRetested_7 = false, var bool usLowRetested_7 = false, var bool usLevelsReady_7 = false
+
+// --- HK50 15m 02:30 ---
+var float hkH15 = na, var float hkL15 = na
+var line hkHighLine = na, var line hkLowLine = na, var box hkBox = na
+var bool hkHighBroken = false, var bool hkLowBroken = false, var bool hkLevelsReady = false
+
+// --- Gold 01:45 ---
+var float goldH15_0145 = na, var float goldL15_0145 = na
+var line goldHighLine_0145 = na, var line goldLowLine_0145 = na, var box goldBox_0145 = na
+var bool goldHighBroken_0145 = false, var bool goldLowBroken_0145 = false
+var bool goldHighClosedOutside_0145 = false, var bool goldLowClosedOutside_0145 = false
+var bool goldHighRetested_0145 = false, var bool goldLowRetested_0145 = false, var bool goldLevelsReady_0145 = false
+
+// --- Gold 14:15 ---
+var float goldH15_1415 = na, var float goldL15_1415 = na
+var line goldHighLine_1415 = na, var line goldLowLine_1415 = na, var box goldBox_1415 = na
+var bool goldHighBroken_1415 = false, var bool goldLowBroken_1415 = false
+var bool goldHighClosedOutside_1415 = false, var bool goldLowClosedOutside_1415 = false
+var bool goldHighRetested_1415 = false, var bool goldLowRetested_1415 = false, var bool goldLevelsReady_1415 = false
+
+// --- Forex 08:15 ---
+var float fxH15_0815 = na, var float fxL15_0815 = na
+var line fxHighLine_0815 = na, var line fxLowLine_0815 = na, var box fxBox_0815 = na
+var bool fxHighBroken_0815 = false, var bool fxLowBroken_0815 = false
+var bool fxHighClosedOutside_0815 = false, var bool fxLowClosedOutside_0815 = false
+var bool fxHighRetested_0815 = false, var bool fxLowRetested_0815 = false, var bool fxLevelsReady_0815 = false
+
+// === ALERT TRIGGER VARIABLEN ===
+var bool triggerEU2ndHigh = false, var bool triggerEU2ndLow = false
+var bool triggerEU2ndHighRetest = false, var bool triggerEU2ndLowRetest = false
+var bool triggerEU7thHigh = false, var bool triggerEU7thLow = false
+var bool triggerEU7thHighRetest = false, var bool triggerEU7thLowRetest = false
+var bool triggerUS2ndHigh = false, var bool triggerUS2ndLow = false
+var bool triggerUS2ndHighRetest = false, var bool triggerUS2ndLowRetest = false
+var bool triggerUS7thHigh = false, var bool triggerUS7thLow = false
+var bool triggerUS7thHighRetest = false, var bool triggerUS7thLowRetest = false
+var bool triggerHK50High = false, var bool triggerHK50Low = false
+var bool triggerJPN225High = false, var bool triggerJPN225Low = false
+var bool triggerEU1stLow = false, var bool triggerEU4thHigh = false, var bool triggerEU4thLow = false
+var bool triggerUS1stLow = false, var bool triggerUS4thHigh = false, var bool triggerUS4thLow = false
+var bool triggerEU30PreLow = false, var bool triggerUS30PreLow = false
+var bool triggerEU10PreHigh = false, var bool triggerEU10PreLow = false
+var bool triggerUS10PreHigh = false, var bool triggerUS10PreLow = false
+var bool triggerRuleOf4Long = false, var bool triggerRuleOf4Short = false
+var bool triggerPressConfLong = false, var bool triggerPressConfShort = false
+var bool triggerGold0145High = false, var bool triggerGold0145Low = false
+var bool triggerGold0145HighRetest = false, var bool triggerGold0145LowRetest = false
+var bool triggerGold1415High = false, var bool triggerGold1415Low = false
+var bool triggerGold1415HighRetest = false, var bool triggerGold1415LowRetest = false
+var bool triggerFX0815High = false, var bool triggerFX0815Low = false
+var bool triggerFX0815HighRetest = false, var bool triggerFX0815LowRetest = false
+var bool trigger8BallEUHigh = false, var bool trigger8BallEULow = false
+var bool triggerTeenEUHigh  = false, var bool triggerTeenEULow  = false
+var bool trigger8BallUSHigh = false, var bool trigger8BallUSLow = false
+var bool triggerTeenUSHigh  = false, var bool triggerTeenUSLow  = false
+
+// Reset triggers each bar
+triggerEU2ndHigh := false, triggerEU2ndLow := false, triggerEU2ndHighRetest := false, triggerEU2ndLowRetest := false
+triggerEU7thHigh := false, triggerEU7thLow := false, triggerEU7thHighRetest := false, triggerEU7thLowRetest := false
+triggerUS2ndHigh := false, triggerUS2ndLow := false, triggerUS2ndHighRetest := false, triggerUS2ndLowRetest := false
+triggerUS7thHigh := false, triggerUS7thLow := false, triggerUS7thHighRetest := false, triggerUS7thLowRetest := false
+triggerHK50High := false, triggerHK50Low := false, triggerJPN225High := false, triggerJPN225Low := false
+triggerEU1stLow := false, triggerEU4thHigh := false, triggerEU4thLow := false
+triggerUS1stLow := false, triggerUS4thHigh := false, triggerUS4thLow := false
+triggerEU30PreLow := false, triggerUS30PreLow := false
+triggerEU10PreHigh := false, triggerEU10PreLow := false, triggerUS10PreHigh := false, triggerUS10PreLow := false
+triggerRuleOf4Long := false, triggerRuleOf4Short := false
+triggerPressConfLong := false, triggerPressConfShort := false
+triggerGold0145High := false, triggerGold0145Low := false, triggerGold0145HighRetest := false, triggerGold0145LowRetest := false
+triggerGold1415High := false, triggerGold1415Low := false, triggerGold1415HighRetest := false, triggerGold1415LowRetest := false
+triggerFX0815High := false, triggerFX0815Low := false, triggerFX0815HighRetest := false, triggerFX0815LowRetest := false
+trigger8BallEUHigh := false, trigger8BallEULow := false, triggerTeenEUHigh := false, triggerTeenEULow := false
+trigger8BallUSHigh := false, trigger8BallUSLow := false, triggerTeenUSHigh := false, triggerTeenUSLow := false
+
+// ===== EU 15-Min: 2. Candle =====
+if isEU15_2nd and showEU and showEU_2nd15
+    euLevelsReady := false
+    line.delete(euHighLine), line.delete(euLowLine), box.delete(euBox)
+    euBox := box.new(bar_index, high15, bar_index + 1, low15, border_color = euColor, bgcolor = color.new(euColor, 90), border_width = lineWidth, text = 'EU 2nd (15min)', text_color = euColor, text_size = size.small)
+    euHighLine := line.new(bar_index, high15, bar_index + 1, high15, color = euColor, width = lineWidth, extend = extend.right)
+    euLowLine  := line.new(bar_index, low15, bar_index + 1, low15, color = euColor, width = lineWidth, extend = extend.right)
+
+if isEU15_2nd_closed and showEU and showEU_2nd15
+    euH15 := high15[1], euL15 := low15[1]
+    euHighBroken := false, euLowBroken := false, euHighClosedOutside := false, euLowClosedOutside := false
+    euHighRetested := false, euLowRetested := false, euLevelsReady := true
+
+if showEU and showEU_2nd15 and euLevelsReady and not na(euH15) and showVol15Min
+    if not na(euHighLine) and high > line.get_y1(euHighLine) and not euHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        euHighBroken := true, triggerEU2ndHigh := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (EU 2nd)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if euHighBroken and not euHighClosedOutside and not na(euHighLine) and low > line.get_y1(euHighLine)
+        euHighClosedOutside := true
+    if euHighBroken and euHighClosedOutside and not euHighRetested and not na(euHighLine) and low <= line.get_y1(euHighLine)
+        euHighRetested := true
+        if showRetestAlerts
+            triggerEU2ndHighRetest := true
+        if showRetestLabels
+            lbl(bar_index, low, 'Retest (EU 2nd H)', color = retestLabelColorEU, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if not na(euLowLine) and low < line.get_y1(euLowLine) and not euLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        euLowBroken := true, triggerEU2ndLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (EU 2nd)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if euLowBroken and not euLowClosedOutside and not na(euLowLine) and high < line.get_y1(euLowLine)
+        euLowClosedOutside := true
+    if euLowBroken and euLowClosedOutside and not euLowRetested and not na(euLowLine) and high >= line.get_y1(euLowLine)
+        euLowRetested := true
+        if showRetestAlerts
+            triggerEU2ndLowRetest := true
+        if showRetestLabels
+            lbl(bar_index, high, 'Retest (EU 2nd L)', color = retestLabelColorEU, textcolor = color.white, style = label.style_label_down, size = size.small)
+
+// ===== EU 15-Min: 7. Candle =====
+if isEU15_7th and showEU and showEU_7th15
+    euLevelsReady_7 := false
+    line.delete(euHighLine_7), line.delete(euLowLine_7), box.delete(euBox_7)
+    euBox_7 := box.new(bar_index, high15, bar_index + 1, low15, border_color = euColor, bgcolor = color.new(euColor, 90), border_width = lineWidth, text = 'EU 7th (15min)', text_color = euColor, text_size = size.small)
+    euHighLine_7 := line.new(bar_index, high15, bar_index + 1, high15, color = euColor, width = lineWidth, extend = extend.right)
+    euLowLine_7  := line.new(bar_index, low15, bar_index + 1, low15, color = euColor, width = lineWidth, extend = extend.right)
+
+if isEU15_7th_closed and showEU and showEU_7th15
+    euH15_7 := high15[1], euL15_7 := low15[1]
+    euHighBroken_7 := false, euLowBroken_7 := false, euHighClosedOutside_7 := false, euLowClosedOutside_7 := false
+    euHighRetested_7 := false, euLowRetested_7 := false, euLevelsReady_7 := true
+
+if showEU and showEU_7th15 and euLevelsReady_7 and not na(euH15_7) and showVol15Min
+    if not na(euHighLine_7) and high > line.get_y1(euHighLine_7) and not euHighBroken_7 and isBreakoutConfirmed(volume, currentAvgVol)
+        euHighBroken_7 := true, triggerEU7thHigh := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (EU 7th)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if euHighBroken_7 and not euHighClosedOutside_7 and not na(euHighLine_7) and low > line.get_y1(euHighLine_7)
+        euHighClosedOutside_7 := true
+    if euHighBroken_7 and euHighClosedOutside_7 and not euHighRetested_7 and not na(euHighLine_7) and low <= line.get_y1(euHighLine_7)
+        euHighRetested_7 := true
+        if showRetestAlerts
+            triggerEU7thHighRetest := true
+        if showRetestLabels
+            lbl(bar_index, low, 'Retest (EU 7th H)', color = retestLabelColorEU, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if not na(euLowLine_7) and low < line.get_y1(euLowLine_7) and not euLowBroken_7 and isBreakoutConfirmed(volume, currentAvgVol)
+        euLowBroken_7 := true, triggerEU7thLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (EU 7th)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if euLowBroken_7 and not euLowClosedOutside_7 and not na(euLowLine_7) and high < line.get_y1(euLowLine_7)
+        euLowClosedOutside_7 := true
+    if euLowBroken_7 and euLowClosedOutside_7 and not euLowRetested_7 and not na(euLowLine_7) and high >= line.get_y1(euLowLine_7)
+        euLowRetested_7 := true
+        if showRetestAlerts
+            triggerEU7thLowRetest := true
+        if showRetestLabels
+            lbl(bar_index, high, 'Retest (EU 7th L)', color = retestLabelColorEU, textcolor = color.white, style = label.style_label_down, size = size.small)
+
+// ===== US 15-Min: 2. Candle =====
+if isUS15_2nd and showUS and showUS_2nd15
+    usLevelsReady := false
+    line.delete(usHighLine), line.delete(usLowLine), box.delete(usBox)
+    usBox := box.new(bar_index, high15, bar_index + 1, low15, border_color = usColor, bgcolor = color.new(usColor, 90), border_width = lineWidth, text = 'US 2nd (15min)', text_color = usColor, text_size = size.small)
+    usHighLine := line.new(bar_index, high15, bar_index + 1, high15, color = usColor, width = lineWidth, extend = extend.right)
+    usLowLine  := line.new(bar_index, low15, bar_index + 1, low15, color = usColor, width = lineWidth, extend = extend.right)
+
+if isUS15_2nd_closed and showUS and showUS_2nd15
+    usH15 := high15[1], usL15 := low15[1]
+    usHighBroken := false, usLowBroken := false, usHighClosedOutside := false, usLowClosedOutside := false
+    usHighRetested := false, usLowRetested := false, usLevelsReady := true
+
+if showUS and showUS_2nd15 and usLevelsReady and not na(usH15) and showVol15Min
+    if not na(usHighLine) and high > line.get_y1(usHighLine) and not usHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        usHighBroken := true, triggerUS2ndHigh := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (US 2nd)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if usHighBroken and not usHighClosedOutside and not na(usHighLine) and low > line.get_y1(usHighLine)
+        usHighClosedOutside := true
+    if usHighBroken and usHighClosedOutside and not usHighRetested and not na(usHighLine) and low <= line.get_y1(usHighLine)
+        usHighRetested := true
+        if showRetestAlerts
+            triggerUS2ndHighRetest := true
+        if showRetestLabels
+            lbl(bar_index, low, 'Retest (US 2nd H)', color = retestLabelColorUS, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if not na(usLowLine) and low < line.get_y1(usLowLine) and not usLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        usLowBroken := true, triggerUS2ndLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (US 2nd)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if usLowBroken and not usLowClosedOutside and not na(usLowLine) and high < line.get_y1(usLowLine)
+        usLowClosedOutside := true
+    if usLowBroken and usLowClosedOutside and not usLowRetested and not na(usLowLine) and high >= line.get_y1(usLowLine)
+        usLowRetested := true
+        if showRetestAlerts
+            triggerUS2ndLowRetest := true
+        if showRetestLabels
+            lbl(bar_index, high, 'Retest (US 2nd L)', color = retestLabelColorUS, textcolor = color.white, style = label.style_label_down, size = size.small)
+
+// ===== US 15-Min: 7. Candle =====
+if isUS15_7th and showUS and showUS_7th15
+    usLevelsReady_7 := false
+    line.delete(usHighLine_7), line.delete(usLowLine_7), box.delete(usBox_7)
+    usBox_7 := box.new(bar_index, high15, bar_index + 1, low15, border_color = usColor, bgcolor = color.new(usColor, 90), border_width = lineWidth, text = 'US 7th (15min)', text_color = usColor, text_size = size.small)
+    usHighLine_7 := line.new(bar_index, high15, bar_index + 1, high15, color = usColor, width = lineWidth, extend = extend.right)
+    usLowLine_7  := line.new(bar_index, low15, bar_index + 1, low15, color = usColor, width = lineWidth, extend = extend.right)
+
+if isUS15_7th_closed and showUS and showUS_7th15
+    usH15_7 := high15[1], usL15_7 := low15[1]
+    usHighBroken_7 := false, usLowBroken_7 := false, usHighClosedOutside_7 := false, usLowClosedOutside_7 := false
+    usHighRetested_7 := false, usLowRetested_7 := false, usLevelsReady_7 := true
+
+if showUS and showUS_7th15 and usLevelsReady_7 and not na(usH15_7) and showVol15Min
+    if not na(usHighLine_7) and high > line.get_y1(usHighLine_7) and not usHighBroken_7 and isBreakoutConfirmed(volume, currentAvgVol)
+        usHighBroken_7 := true, triggerUS7thHigh := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (US 7th)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if usHighBroken_7 and not usHighClosedOutside_7 and not na(usHighLine_7) and low > line.get_y1(usHighLine_7)
+        usHighClosedOutside_7 := true
+    if usHighBroken_7 and usHighClosedOutside_7 and not usHighRetested_7 and not na(usHighLine_7) and low <= line.get_y1(usHighLine_7)
+        usHighRetested_7 := true
+        if showRetestAlerts
+            triggerUS7thHighRetest := true
+        if showRetestLabels
+            lbl(bar_index, low, 'Retest (US 7th H)', color = retestLabelColorUS, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if not na(usLowLine_7) and low < line.get_y1(usLowLine_7) and not usLowBroken_7 and isBreakoutConfirmed(volume, currentAvgVol)
+        usLowBroken_7 := true, triggerUS7thLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (US 7th)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if usLowBroken_7 and not usLowClosedOutside_7 and not na(usLowLine_7) and high < line.get_y1(usLowLine_7)
+        usLowClosedOutside_7 := true
+    if usLowBroken_7 and usLowClosedOutside_7 and not usLowRetested_7 and not na(usLowLine_7) and high >= line.get_y1(usLowLine_7)
+        usLowRetested_7 := true
+        if showRetestAlerts
+            triggerUS7thLowRetest := true
+        if showRetestLabels
+            lbl(bar_index, high, 'Retest (US 7th L)', color = retestLabelColorUS, textcolor = color.white, style = label.style_label_down, size = size.small)
+
+// ===== HK50 15-Min: 02:30 Candle =====
+if isHK15_230 and showHK50 and showHK_230 and isHK50Symbol
+    hkLevelsReady := false
+    line.delete(hkHighLine), line.delete(hkLowLine), box.delete(hkBox)
+    hkBox := box.new(bar_index, high15, bar_index + 1, low15, border_color = hkColor, bgcolor = color.new(hkColor, 90), border_width = lineWidth, text = 'HK50 02:30 (15min)', text_color = hkColor, text_size = size.small)
+    hkHighLine := line.new(bar_index, high15, bar_index + 1, high15, color = hkColor, width = lineWidth, extend = extend.right)
+    hkLowLine  := line.new(bar_index, low15, bar_index + 1, low15, color = hkColor, width = lineWidth, extend = extend.right)
+
+if isHK15_230_closed and showHK50 and showHK_230 and isHK50Symbol
+    hkH15 := high15[1], hkL15 := low15[1], hkHighBroken := false, hkLowBroken := false, hkLevelsReady := true
+
+if showHK50 and showHK_230 and hkLevelsReady and not na(hkH15) and showVol15Min and isHK50Symbol
+    if not na(hkHighLine) and high > line.get_y1(hkHighLine) and not hkHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        hkHighBroken := true, triggerHK50High := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (HK50 02:30)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if not na(hkLowLine) and low < line.get_y1(hkLowLine) and not hkLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        hkLowBroken := true, triggerHK50Low := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (HK50 02:30)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+
+// ===== GOLD SESSION CANDLES =====
+isGold15_0145 = hour(time15, tz) == getAsianHour(1) and minute(time15, tz) == 45
+isGold15_1415 = hour(time15, tz) == getUSHour(14) and minute(time15, tz) == 15
+isGold15_0145_closed = hour(time15, tz) == getAsianHour(2) and minute(time15, tz) == 0
+isGold15_1415_closed = hour(time15, tz) == getUSHour(14) and minute(time15, tz) == 30
+
+// Gold 01:45
+if isGold15_0145 and showGoldSession and showGold_0145 and isCommoditySymbol
+    goldLevelsReady_0145 := false
+    line.delete(goldHighLine_0145), line.delete(goldLowLine_0145), box.delete(goldBox_0145)
+    goldBox_0145 := box.new(bar_index, high15, bar_index + 1, low15, border_color = goldSessionColor, bgcolor = color.new(goldSessionColor, 90), border_width = lineWidth, text = 'Gold 01:45 (15min)', text_color = goldSessionColor, text_size = size.small)
+    goldHighLine_0145 := line.new(bar_index, high15, bar_index + 1, high15, color = goldSessionColor, width = lineWidth, extend = extend.right)
+    goldLowLine_0145  := line.new(bar_index, low15, bar_index + 1, low15, color = goldSessionColor, width = lineWidth, extend = extend.right)
+if isGold15_0145_closed and showGoldSession and showGold_0145 and isCommoditySymbol
+    goldH15_0145 := high15[1], goldL15_0145 := low15[1]
+    goldHighBroken_0145 := false, goldLowBroken_0145 := false, goldHighClosedOutside_0145 := false, goldLowClosedOutside_0145 := false
+    goldHighRetested_0145 := false, goldLowRetested_0145 := false, goldLevelsReady_0145 := true
+if showGoldSession and showGold_0145 and goldLevelsReady_0145 and not na(goldH15_0145) and isCommoditySymbol
+    if not na(goldHighLine_0145) and high > line.get_y1(goldHighLine_0145) and not goldHighBroken_0145 and isBreakoutConfirmed(volume, currentAvgVol)
+        goldHighBroken_0145 := true, triggerGold0145High := true
+        if showVol15Min
+            [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+            lbl(bar_index, high, volSymbol + volText + ' (Gold 01:45)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if goldHighBroken_0145 and not goldHighClosedOutside_0145 and not na(goldHighLine_0145) and low > line.get_y1(goldHighLine_0145)
+        goldHighClosedOutside_0145 := true
+    if goldHighBroken_0145 and goldHighClosedOutside_0145 and not goldHighRetested_0145 and not na(goldHighLine_0145) and low <= line.get_y1(goldHighLine_0145)
+        goldHighRetested_0145 := true
+        if showRetestAlerts
+            triggerGold0145HighRetest := true
+        if showRetestLabels
+            lbl(bar_index, low, 'Retest (Gold 01:45 H)', color = goldSessionColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if not na(goldLowLine_0145) and low < line.get_y1(goldLowLine_0145) and not goldLowBroken_0145 and isBreakoutConfirmed(volume, currentAvgVol)
+        goldLowBroken_0145 := true, triggerGold0145Low := true
+        if showVol15Min
+            [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+            lbl(bar_index, low, volSymbol + volText + ' (Gold 01:45)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if goldLowBroken_0145 and not goldLowClosedOutside_0145 and not na(goldLowLine_0145) and high < line.get_y1(goldLowLine_0145)
+        goldLowClosedOutside_0145 := true
+    if goldLowBroken_0145 and goldLowClosedOutside_0145 and not goldLowRetested_0145 and not na(goldLowLine_0145) and high >= line.get_y1(goldLowLine_0145)
+        goldLowRetested_0145 := true
+        if showRetestAlerts
+            triggerGold0145LowRetest := true
+        if showRetestLabels
+            lbl(bar_index, high, 'Retest (Gold 01:45 L)', color = goldSessionColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+
+// Gold 14:15
+if isGold15_1415 and showGoldSession and showGold_1415 and isCommoditySymbol
+    goldLevelsReady_1415 := false
+    line.delete(goldHighLine_1415), line.delete(goldLowLine_1415), box.delete(goldBox_1415)
+    goldBox_1415 := box.new(bar_index, high15, bar_index + 1, low15, border_color = goldSessionColor, bgcolor = color.new(goldSessionColor, 90), border_width = lineWidth, text = 'Gold 14:15 (15min)', text_color = goldSessionColor, text_size = size.small)
+    goldHighLine_1415 := line.new(bar_index, high15, bar_index + 1, high15, color = goldSessionColor, width = lineWidth, extend = extend.right)
+    goldLowLine_1415  := line.new(bar_index, low15, bar_index + 1, low15, color = goldSessionColor, width = lineWidth, extend = extend.right)
+if isGold15_1415_closed and showGoldSession and showGold_1415 and isCommoditySymbol
+    goldH15_1415 := high15[1], goldL15_1415 := low15[1]
+    goldHighBroken_1415 := false, goldLowBroken_1415 := false, goldHighClosedOutside_1415 := false, goldLowClosedOutside_1415 := false
+    goldHighRetested_1415 := false, goldLowRetested_1415 := false, goldLevelsReady_1415 := true
+if showGoldSession and showGold_1415 and goldLevelsReady_1415 and not na(goldH15_1415) and isCommoditySymbol
+    if not na(goldHighLine_1415) and high > line.get_y1(goldHighLine_1415) and not goldHighBroken_1415 and isBreakoutConfirmed(volume, currentAvgVol)
+        goldHighBroken_1415 := true, triggerGold1415High := true
+        if showVol15Min
+            [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+            lbl(bar_index, high, volSymbol + volText + ' (Gold 14:15)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if goldHighBroken_1415 and not goldHighClosedOutside_1415 and not na(goldHighLine_1415) and low > line.get_y1(goldHighLine_1415)
+        goldHighClosedOutside_1415 := true
+    if goldHighBroken_1415 and goldHighClosedOutside_1415 and not goldHighRetested_1415 and not na(goldHighLine_1415) and low <= line.get_y1(goldHighLine_1415)
+        goldHighRetested_1415 := true
+        if showRetestAlerts
+            triggerGold1415HighRetest := true
+        if showRetestLabels
+            lbl(bar_index, low, 'Retest (Gold 14:15 H)', color = goldSessionColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if not na(goldLowLine_1415) and low < line.get_y1(goldLowLine_1415) and not goldLowBroken_1415 and isBreakoutConfirmed(volume, currentAvgVol)
+        goldLowBroken_1415 := true, triggerGold1415Low := true
+        if showVol15Min
+            [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+            lbl(bar_index, low, volSymbol + volText + ' (Gold 14:15)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if goldLowBroken_1415 and not goldLowClosedOutside_1415 and not na(goldLowLine_1415) and high < line.get_y1(goldLowLine_1415)
+        goldLowClosedOutside_1415 := true
+    if goldLowBroken_1415 and goldLowClosedOutside_1415 and not goldLowRetested_1415 and not na(goldLowLine_1415) and high >= line.get_y1(goldLowLine_1415)
+        goldLowRetested_1415 := true
+        if showRetestAlerts
+            triggerGold1415LowRetest := true
+        if showRetestLabels
+            lbl(bar_index, high, 'Retest (Gold 14:15 L)', color = goldSessionColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+
+// ===== FOREX SESSION CANDLES =====
+isFX15_0815 = hour(time15, tz) == 8 and minute(time15, tz) == 15
+isFX15_0815_closed = hour(time15, tz) == 8 and minute(time15, tz) == 30
+if isFX15_0815 and showForexSession and showFX_0815 and isForexSymbol
+    fxLevelsReady_0815 := false
+    line.delete(fxHighLine_0815), line.delete(fxLowLine_0815), box.delete(fxBox_0815)
+    fxBox_0815 := box.new(bar_index, high15, bar_index + 1, low15, border_color = forexSessionColor, bgcolor = color.new(forexSessionColor, 90), border_width = lineWidth, text = 'FX 08:15 (15min)', text_color = forexSessionColor, text_size = size.small)
+    fxHighLine_0815 := line.new(bar_index, high15, bar_index + 1, high15, color = forexSessionColor, width = lineWidth, extend = extend.right)
+    fxLowLine_0815  := line.new(bar_index, low15, bar_index + 1, low15, color = forexSessionColor, width = lineWidth, extend = extend.right)
+if isFX15_0815_closed and showForexSession and showFX_0815 and isForexSymbol
+    fxH15_0815 := high15[1], fxL15_0815 := low15[1]
+    fxHighBroken_0815 := false, fxLowBroken_0815 := false, fxHighClosedOutside_0815 := false, fxLowClosedOutside_0815 := false
+    fxHighRetested_0815 := false, fxLowRetested_0815 := false, fxLevelsReady_0815 := true
+if showForexSession and showFX_0815 and fxLevelsReady_0815 and not na(fxH15_0815) and isForexSymbol
+    if not na(fxHighLine_0815) and high > line.get_y1(fxHighLine_0815) and not fxHighBroken_0815 and isBreakoutConfirmed(volume, currentAvgVol)
+        fxHighBroken_0815 := true, triggerFX0815High := true
+        if showVol15Min
+            [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+            lbl(bar_index, high, volSymbol + volText + ' (FX 08:15)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if fxHighBroken_0815 and not fxHighClosedOutside_0815 and not na(fxHighLine_0815) and low > line.get_y1(fxHighLine_0815)
+        fxHighClosedOutside_0815 := true
+    if fxHighBroken_0815 and fxHighClosedOutside_0815 and not fxHighRetested_0815 and not na(fxHighLine_0815) and low <= line.get_y1(fxHighLine_0815)
+        fxHighRetested_0815 := true
+        if showRetestAlerts
+            triggerFX0815HighRetest := true
+        if showRetestLabels
+            lbl(bar_index, low, 'Retest (FX 08:15 H)', color = forexSessionColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if not na(fxLowLine_0815) and low < line.get_y1(fxLowLine_0815) and not fxLowBroken_0815 and isBreakoutConfirmed(volume, currentAvgVol)
+        fxLowBroken_0815 := true, triggerFX0815Low := true
+        if showVol15Min
+            [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+            lbl(bar_index, low, volSymbol + volText + ' (FX 08:15)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+    if fxLowBroken_0815 and not fxLowClosedOutside_0815 and not na(fxLowLine_0815) and high < line.get_y1(fxLowLine_0815)
+        fxLowClosedOutside_0815 := true
+    if fxLowBroken_0815 and fxLowClosedOutside_0815 and not fxLowRetested_0815 and not na(fxLowLine_0815) and high >= line.get_y1(fxLowLine_0815)
+        fxLowRetested_0815 := true
+        if showRetestAlerts
+            triggerFX0815LowRetest := true
+        if showRetestLabels
+            lbl(bar_index, high, 'Retest (FX 08:15 L)', color = forexSessionColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+
+// Marker (Box-Visualisierung übernimmt Markierung — plotshapes auf HK50/JPN225 reduziert um Output-Limit zu schonen)
+plotshape(isHK15_230 and showHK50 and showHK_230 and timeframe.period == '15' and isHK50Symbol, 'HK50 02:30', shape.diamond, location.belowbar, hkColor, size = size.small)
+
+// === JPN225 10-MIN ===
+[time10, high10, low10, open10, close10, vol10] = request.security(syminfo.tickerid, '10', [time, high, low, open, close, volume])
+avgVol10 = ta.sma(vol10, volPeriod)
+isJPN10_050 = hour(time10, tz) == getAsianHour(0) and minute(time10, tz) == 50
+isJPN10_050_closed = hour(time10, tz) == getAsianHour(1) and minute(time10, tz) == 0
+var float jpnH10 = na, var float jpnL10 = na
+var line jpnHighLine = na, var line jpnLowLine = na, var box jpnBox = na
+var bool jpnHighBroken = false, var bool jpnLowBroken = false, var bool jpnLevelsReady = false
+
+if isJPN10_050 and showJPN and showJPN_050 and isJPN225Symbol
+    jpnLevelsReady := false
+    line.delete(jpnHighLine), line.delete(jpnLowLine), box.delete(jpnBox)
+    jpnBox := box.new(bar_index, high10, bar_index + 1, low10, border_color = jpnColor, bgcolor = color.new(jpnColor, 90), border_width = lineWidth, text = 'JPN225 00:50 (10min)', text_color = jpnColor, text_size = size.small)
+    jpnHighLine := line.new(bar_index, high10, bar_index + 1, high10, color = jpnColor, width = lineWidth, extend = extend.right)
+    jpnLowLine  := line.new(bar_index, low10, bar_index + 1, low10, color = jpnColor, width = lineWidth, extend = extend.right)
+if isJPN10_050_closed and showJPN and showJPN_050 and isJPN225Symbol
+    jpnH10 := high10[1], jpnL10 := low10[1], jpnHighBroken := false, jpnLowBroken := false, jpnLevelsReady := true
+if showJPN and showJPN_050 and jpnLevelsReady and not na(jpnH10) and showVol15Min and isJPN225Symbol
+    if not na(jpnHighLine) and high > line.get_y1(jpnHighLine) and not jpnHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        jpnHighBroken := true, triggerJPN225High := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (JPN225 00:50)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if not na(jpnLowLine) and low < line.get_y1(jpnLowLine) and not jpnLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        jpnLowBroken := true, triggerJPN225Low := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (JPN225 00:50)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+plotshape(isJPN10_050 and showJPN and showJPN_050 and timeframe.period == '10' and isJPN225Symbol, 'JPN225 00:50', shape.diamond, location.belowbar, jpnColor, size = size.small)
+
+// === PRE-MARKET LEVELS ===
+[time30, high30, low30, vol30] = request.security(syminfo.tickerid, '30', [time, high, low, volume])
+isEU30PreMarket = hour(time30, tz) == 8 and minute(time30, tz) == 30
+isUS30PreMarket = hour(time30, tz) == getUSHour(15) and minute(time30, tz) == 0
+isEU10PreMarket = hour(time10, tz) == 8 and minute(time10, tz) == 50
+isUS10PreMarket = hour(time10, tz) == getUSHour(15) and minute(time10, tz) == 20
+var line eu30PreLine = na, var line us30PreLine = na
+var line eu10PreHighLine = na, var line eu10PreLowLine = na
+var line us10PreHighLine = na, var line us10PreLowLine = na
+var float eu30PreLow = na, var float us30PreLow = na
+var float eu10PreHigh = na, var float eu10PreLow = na
+var float us10PreHigh = na, var float us10PreLow = na
+var bool eu30PreBroken = false, var bool us30PreBroken = false
+var bool eu10PreHighBroken = false, var bool eu10PreLowBroken = false
+var bool us10PreHighBroken = false, var bool us10PreLowBroken = false
+
+if isEU30PreMarket and showEU and showPreMarket30
+    eu30PreLow := low30, eu30PreBroken := false
+    line.delete(eu30PreLine)
+    eu30PreLine := line.new(bar_index, low30, bar_index + 1, low30, color = preMarket30Color, width = lineWidth, style = line.style_dotted, extend = extend.right)
+    if showPreMarketLabels
+        lbl(bar_index, low30, 'EU 30m Pre-Low', color = preMarket30Color, textcolor = color.white, style = label.style_label_up, size = size.tiny)
+if showEU and showPreMarket30 and not na(eu30PreLow) and not eu30PreBroken and not isEU30PreMarket
+    if low < eu30PreLow and isBreakoutConfirmed(volume, currentAvgVol)
+        eu30PreBroken := true, triggerEU30PreLow := true
+if isUS30PreMarket and showUS and showPreMarket30
+    us30PreLow := low30, us30PreBroken := false
+    line.delete(us30PreLine)
+    us30PreLine := line.new(bar_index, low30, bar_index + 1, low30, color = preMarket30Color, width = lineWidth, style = line.style_dotted, extend = extend.right)
+    if showPreMarketLabels
+        lbl(bar_index, low30, 'US 30m Pre-Low', color = preMarket30Color, textcolor = color.white, style = label.style_label_up, size = size.tiny)
+if showUS and showPreMarket30 and not na(us30PreLow) and not us30PreBroken and not isUS30PreMarket
+    if low < us30PreLow and isBreakoutConfirmed(volume, currentAvgVol)
+        us30PreBroken := true, triggerUS30PreLow := true
+if isEU10PreMarket and showEU and showPreMarket10
+    eu10PreHigh := high10, eu10PreLow := low10, eu10PreHighBroken := false, eu10PreLowBroken := false
+    line.delete(eu10PreHighLine), line.delete(eu10PreLowLine)
+    eu10PreHighLine := line.new(bar_index, high10, bar_index + 1, high10, color = preMarket10Color, width = lineWidth, style = line.style_dotted, extend = extend.right)
+    eu10PreLowLine := line.new(bar_index, low10, bar_index + 1, low10, color = preMarket10Color, width = lineWidth, style = line.style_dotted, extend = extend.right)
+    if showPreMarketLabels
+        lbl(bar_index, high10, 'EU 10m Pre-H', color = preMarket10Color, textcolor = color.white, style = label.style_label_down, size = size.tiny)
+        lbl(bar_index, low10, 'EU 10m Pre-L', color = preMarket10Color, textcolor = color.white, style = label.style_label_up, size = size.tiny)
+if showEU and showPreMarket10 and not na(eu10PreHigh) and not isEU10PreMarket
+    if high > eu10PreHigh and not eu10PreHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        eu10PreHighBroken := true, triggerEU10PreHigh := true
+    if low < eu10PreLow and not eu10PreLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        eu10PreLowBroken := true, triggerEU10PreLow := true
+if isUS10PreMarket and showUS and showPreMarket10
+    us10PreHigh := high10, us10PreLow := low10, us10PreHighBroken := false, us10PreLowBroken := false
+    line.delete(us10PreHighLine), line.delete(us10PreLowLine)
+    us10PreHighLine := line.new(bar_index, high10, bar_index + 1, high10, color = preMarket10Color, width = lineWidth, style = line.style_dotted, extend = extend.right)
+    us10PreLowLine := line.new(bar_index, low10, bar_index + 1, low10, color = preMarket10Color, width = lineWidth, style = line.style_dotted, extend = extend.right)
+    if showPreMarketLabels
+        lbl(bar_index, high10, 'US 10m Pre-H', color = preMarket10Color, textcolor = color.white, style = label.style_label_down, size = size.tiny)
+        lbl(bar_index, low10, 'US 10m Pre-L', color = preMarket10Color, textcolor = color.white, style = label.style_label_up, size = size.tiny)
+if showUS and showPreMarket10 and not na(us10PreHigh) and not isUS10PreMarket
+    if high > us10PreHigh and not us10PreHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        us10PreHighBroken := true, triggerUS10PreHigh := true
+    if low < us10PreLow and not us10PreLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        us10PreLowBroken := true, triggerUS10PreLow := true
+
+// === 5-MINUTEN CANDLES ===
+[time5, high5, low5, open5, close5, vol5] = request.security(syminfo.tickerid, '5', [time, high, low, open, close, volume])
+avgVol5 = ta.sma(vol5, volPeriod)
+isEU5First  = hour(time5, tz) == 9  and minute(time5, tz) == 0
+isEU5Fourth = hour(time5, tz) == 9  and minute(time5, tz) == 15
+isUS5First  = hour(time5, tz) == getUSHour(15) and minute(time5, tz) == 30
+isUS5Fourth = hour(time5, tz) == getUSHour(15) and minute(time5, tz) == 45
+isEU5First_closed  = hour(time5, tz) == 9  and minute(time5, tz) == 5
+isEU5Fourth_closed = hour(time5, tz) == 9  and minute(time5, tz) == 20
+isUS5First_closed  = hour(time5, tz) == getUSHour(15) and minute(time5, tz) == 35
+isUS5Fourth_closed = hour(time5, tz) == getUSHour(15) and minute(time5, tz) == 50
+
+var line eu5FirstLine = na, var line eu5FourthHighLine = na, var line eu5FourthLowLine = na
+var float eu5FirstLow = na, var bool eu5FirstBullish = false, var bool eu5FirstLowBroken = false
+var float eu5FourthHigh = na, var float eu5FourthLow = na
+var bool eu5FourthHighBroken = false, var bool eu5FourthLowBroken = false
+var bool eu5FirstReady = false, var bool eu5FourthReady = false
+
+var line us5FirstLine = na, var line us5FourthHighLine = na, var line us5FourthLowLine = na
+var float us5FirstLow = na, var bool us5FirstBullish = false, var bool us5FirstLowBroken = false
+var float us5FourthHigh = na, var float us5FourthLow = na
+var bool us5FourthHighBroken = false, var bool us5FourthLowBroken = false
+var bool us5FirstReady = false, var bool us5FourthReady = false
+
+if isEU5First and show5MinEU and showEU
+    eu5FirstReady := false
+    if showEU1stLow
+        line.delete(eu5FirstLine)
+        eu5FirstLine := line.new(bar_index, low5, bar_index + 1, low5, color = eu5MinColor, width = lineWidth, style = line.style_dashed, extend = extend.right)
+if isEU5First_closed and show5MinEU and showEU
+    eu5FirstLow := low5[1], eu5FirstBullish := close5[1] > open5[1], eu5FirstLowBroken := false, eu5FirstReady := true
+    if not eu5FirstBullish and showVolEU1st
+        [volText, volColor, volSymbol, relVol] = getVolLabel(vol5[1], avgVol5)
+        lbl(bar_index, eu5FirstLow, volSymbol + volText + ' (1st bearish)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+if show5MinEU and showEU and eu5FirstReady and not na(eu5FirstLow) and not eu5FirstLowBroken and showVolEU1st and not eu5FirstBullish
+    if low < eu5FirstLow and isBreakoutConfirmed(volume, currentAvgVol)
+        eu5FirstLowBroken := true, triggerEU1stLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (1st break)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+if isEU5Fourth and show5MinEU and showEU
+    eu5FourthReady := false
+    line.delete(eu5FourthHighLine), line.delete(eu5FourthLowLine)
+    eu5FourthHighLine := line.new(bar_index, high5, bar_index + 1, high5, color = eu5MinColor, width = lineWidth, extend = extend.right)
+    eu5FourthLowLine  := line.new(bar_index, low5, bar_index + 1, low5, color = eu5MinColor, width = lineWidth, extend = extend.right)
+if isEU5Fourth_closed and show5MinEU and showEU
+    eu5FourthHigh := high5[1], eu5FourthLow := low5[1], eu5FourthHighBroken := false, eu5FourthLowBroken := false, eu5FourthReady := true
+if show5MinEU and showEU and eu5FourthReady and not na(eu5FourthHigh) and showVolEU4th
+    if high > eu5FourthHigh and not eu5FourthHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        eu5FourthHighBroken := true, triggerEU4thHigh := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (4th)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if low < eu5FourthLow and not eu5FourthLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        eu5FourthLowBroken := true, triggerEU4thLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (4th)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+
+if isUS5First and show5MinUS and showUS
+    us5FirstReady := false
+    if showUS1stLow
+        line.delete(us5FirstLine)
+        us5FirstLine := line.new(bar_index, low5, bar_index + 1, low5, color = us5MinColor, width = lineWidth, style = line.style_dashed, extend = extend.right)
+if isUS5First_closed and show5MinUS and showUS
+    us5FirstLow := low5[1], us5FirstBullish := close5[1] > open5[1], us5FirstLowBroken := false, us5FirstReady := true
+    if not us5FirstBullish and showVolUS1st
+        [volText, volColor, volSymbol, relVol] = getVolLabel(vol5[1], avgVol5)
+        lbl(bar_index, us5FirstLow, volSymbol + volText + ' (1st bearish)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+if show5MinUS and showUS and us5FirstReady and not na(us5FirstLow) and not us5FirstLowBroken and showVolUS1st and not us5FirstBullish
+    if low < us5FirstLow and isBreakoutConfirmed(volume, currentAvgVol)
+        us5FirstLowBroken := true, triggerUS1stLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (1st break)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+if isUS5Fourth and show5MinUS and showUS
+    us5FourthReady := false
+    line.delete(us5FourthHighLine), line.delete(us5FourthLowLine)
+    us5FourthHighLine := line.new(bar_index, high5, bar_index + 1, high5, color = us5MinColor, width = lineWidth, extend = extend.right)
+    us5FourthLowLine  := line.new(bar_index, low5, bar_index + 1, low5, color = us5MinColor, width = lineWidth, extend = extend.right)
+if isUS5Fourth_closed and show5MinUS and showUS
+    us5FourthHigh := high5[1], us5FourthLow := low5[1], us5FourthHighBroken := false, us5FourthLowBroken := false, us5FourthReady := true
+if show5MinUS and showUS and us5FourthReady and not na(us5FourthHigh) and showVolUS4th
+    if high > us5FourthHigh and not us5FourthHighBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        us5FourthHighBroken := true, triggerUS4thHigh := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, high, volSymbol + volText + ' (4th)', color = volColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if low < us5FourthLow and not us5FourthLowBroken and isBreakoutConfirmed(volume, currentAvgVol)
+        us5FourthLowBroken := true, triggerUS4thLow := true
+        [volText, volColor, volSymbol, relVol] = getVolLabel(volume, currentAvgVol)
+        lbl(bar_index, low, volSymbol + volText + ' (4th)', color = volColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+
+// === 8 BALL & TEENAGER STRATEGIE (Tom Hougaard) ===
+// 8 Ball = 8. 5-Min Bar nach Open, Teenager = 13. Bar
+// Orderly-Filter: Bar wird nur gehandelt wenn Range <= orderlyMult * Avg-Range der Pre-Bars
+range5_avg7_pre  = request.security(syminfo.tickerid, '5', ta.sma(high - low, 7)[2])
+range5_avg12_pre = request.security(syminfo.tickerid, '5', ta.sma(high - low, 12)[2])
+
+isEU5_8th         = hour(time5, tz) == 9  and minute(time5, tz) == 35
+isEU5_8th_closed  = hour(time5, tz) == 9  and minute(time5, tz) == 40
+isEU5_13th        = hour(time5, tz) == 10 and minute(time5, tz) == 0
+isEU5_13th_closed = hour(time5, tz) == 10 and minute(time5, tz) == 5
+isUS5_8th         = hour(time5, tz) == getUSHour(16) and minute(time5, tz) == 5
+isUS5_8th_closed  = hour(time5, tz) == getUSHour(16) and minute(time5, tz) == 10
+isUS5_13th        = hour(time5, tz) == getUSHour(16) and minute(time5, tz) == 30
+isUS5_13th_closed = hour(time5, tz) == getUSHour(16) and minute(time5, tz) == 35
+
+var line ball_eu_H = na, var line ball_eu_L = na, var box ball_eu_Box = na
+var float ball_eu_H_lvl = na, var float ball_eu_L_lvl = na
+var bool ball_eu_H_brk = false, var bool ball_eu_L_brk = false, var bool ball_eu_ready = false, var bool ball_eu_orderly = false
+
+var line teen_eu_H = na, var line teen_eu_L = na, var box teen_eu_Box = na
+var float teen_eu_H_lvl = na, var float teen_eu_L_lvl = na
+var bool teen_eu_H_brk = false, var bool teen_eu_L_brk = false, var bool teen_eu_ready = false, var bool teen_eu_orderly = false
+
+var line ball_us_H = na, var line ball_us_L = na, var box ball_us_Box = na
+var float ball_us_H_lvl = na, var float ball_us_L_lvl = na
+var bool ball_us_H_brk = false, var bool ball_us_L_brk = false, var bool ball_us_ready = false, var bool ball_us_orderly = false
+
+var line teen_us_H = na, var line teen_us_L = na, var box teen_us_Box = na
+var float teen_us_H_lvl = na, var float teen_us_L_lvl = na
+var bool teen_us_H_brk = false, var bool teen_us_L_brk = false, var bool teen_us_ready = false, var bool teen_us_orderly = false
+
+orderlyOK(barRange, avgPre) =>
+    na(avgPre) or avgPre == 0 ? true : barRange <= avgPre * orderlyMult
+
+// --- EU 8 Ball ---
+if isEU5_8th and show8Ball and show8BallEU and showEU
+    ball_eu_ready := false
+    line.delete(ball_eu_H), line.delete(ball_eu_L), box.delete(ball_eu_Box)
+    ball_eu_Box := box.new(bar_index, high5, bar_index + 1, low5, border_color = ballColor, bgcolor = color.new(ballColor, 88), border_width = lineWidth, text = 'EU 8 Ball', text_color = ballColor, text_size = size.small)
+    ball_eu_H := line.new(bar_index, high5, bar_index + 1, high5, color = ballColor, width = lineWidth, extend = extend.right)
+    ball_eu_L := line.new(bar_index, low5,  bar_index + 1, low5,  color = ballColor, width = lineWidth, extend = extend.right)
+if isEU5_8th_closed and show8Ball and show8BallEU and showEU
+    barRange = high5[1] - low5[1]
+    ball_eu_orderly := orderlyOK(barRange, range5_avg7_pre)
+    ball_eu_H_lvl := high5[1], ball_eu_L_lvl := low5[1]
+    ball_eu_H_brk := false, ball_eu_L_brk := false, ball_eu_ready := true
+    if not ball_eu_orderly
+        lbl(bar_index, high5[1], '⚠ EU 8 Ball OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+if show8Ball and show8BallEU and showEU and ball_eu_ready and ball_eu_orderly and not na(ball_eu_H_lvl)
+    if high > ball_eu_H_lvl and not ball_eu_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        ball_eu_H_brk := true, trigger8BallEUHigh := true
+        lbl(bar_index, high, '▲ EU 8 Ball H', color = ballColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if low < ball_eu_L_lvl and not ball_eu_L_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        ball_eu_L_brk := true, trigger8BallEULow := true
+        lbl(bar_index, low,  '▼ EU 8 Ball L', color = ballColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+
+// --- EU Teenager ---
+if isEU5_13th and show8Ball and showTeenEU and showEU
+    teen_eu_ready := false
+    line.delete(teen_eu_H), line.delete(teen_eu_L), box.delete(teen_eu_Box)
+    teen_eu_Box := box.new(bar_index, high5, bar_index + 1, low5, border_color = teenColor, bgcolor = color.new(teenColor, 88), border_width = lineWidth, text = 'EU Teenager', text_color = teenColor, text_size = size.small)
+    teen_eu_H := line.new(bar_index, high5, bar_index + 1, high5, color = teenColor, width = lineWidth, extend = extend.right)
+    teen_eu_L := line.new(bar_index, low5,  bar_index + 1, low5,  color = teenColor, width = lineWidth, extend = extend.right)
+if isEU5_13th_closed and show8Ball and showTeenEU and showEU
+    barRange = high5[1] - low5[1]
+    teen_eu_orderly := orderlyOK(barRange, range5_avg12_pre)
+    teen_eu_H_lvl := high5[1], teen_eu_L_lvl := low5[1]
+    teen_eu_H_brk := false, teen_eu_L_brk := false, teen_eu_ready := true
+    if not teen_eu_orderly
+        lbl(bar_index, high5[1], '⚠ EU Teenager OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+if show8Ball and showTeenEU and showEU and teen_eu_ready and teen_eu_orderly and not na(teen_eu_H_lvl)
+    if high > teen_eu_H_lvl and not teen_eu_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        teen_eu_H_brk := true, triggerTeenEUHigh := true
+        lbl(bar_index, high, '▲ EU Teenager H', color = teenColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if low < teen_eu_L_lvl and not teen_eu_L_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        teen_eu_L_brk := true, triggerTeenEULow := true
+        lbl(bar_index, low,  '▼ EU Teenager L', color = teenColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+
+// --- US 8 Ball ---
+if isUS5_8th and show8Ball and show8BallUS and showUS
+    ball_us_ready := false
+    line.delete(ball_us_H), line.delete(ball_us_L), box.delete(ball_us_Box)
+    ball_us_Box := box.new(bar_index, high5, bar_index + 1, low5, border_color = ballColor, bgcolor = color.new(ballColor, 88), border_width = lineWidth, text = 'US 8 Ball', text_color = ballColor, text_size = size.small)
+    ball_us_H := line.new(bar_index, high5, bar_index + 1, high5, color = ballColor, width = lineWidth, extend = extend.right)
+    ball_us_L := line.new(bar_index, low5,  bar_index + 1, low5,  color = ballColor, width = lineWidth, extend = extend.right)
+if isUS5_8th_closed and show8Ball and show8BallUS and showUS
+    barRange = high5[1] - low5[1]
+    ball_us_orderly := orderlyOK(barRange, range5_avg7_pre)
+    ball_us_H_lvl := high5[1], ball_us_L_lvl := low5[1]
+    ball_us_H_brk := false, ball_us_L_brk := false, ball_us_ready := true
+    if not ball_us_orderly
+        lbl(bar_index, high5[1], '⚠ US 8 Ball OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+if show8Ball and show8BallUS and showUS and ball_us_ready and ball_us_orderly and not na(ball_us_H_lvl)
+    if high > ball_us_H_lvl and not ball_us_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        ball_us_H_brk := true, trigger8BallUSHigh := true
+        lbl(bar_index, high, '▲ US 8 Ball H', color = ballColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if low < ball_us_L_lvl and not ball_us_L_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        ball_us_L_brk := true, trigger8BallUSLow := true
+        lbl(bar_index, low,  '▼ US 8 Ball L', color = ballColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+
+// --- US Teenager ---
+if isUS5_13th and show8Ball and showTeenUS and showUS
+    teen_us_ready := false
+    line.delete(teen_us_H), line.delete(teen_us_L), box.delete(teen_us_Box)
+    teen_us_Box := box.new(bar_index, high5, bar_index + 1, low5, border_color = teenColor, bgcolor = color.new(teenColor, 88), border_width = lineWidth, text = 'US Teenager', text_color = teenColor, text_size = size.small)
+    teen_us_H := line.new(bar_index, high5, bar_index + 1, high5, color = teenColor, width = lineWidth, extend = extend.right)
+    teen_us_L := line.new(bar_index, low5,  bar_index + 1, low5,  color = teenColor, width = lineWidth, extend = extend.right)
+if isUS5_13th_closed and show8Ball and showTeenUS and showUS
+    barRange = high5[1] - low5[1]
+    teen_us_orderly := orderlyOK(barRange, range5_avg12_pre)
+    teen_us_H_lvl := high5[1], teen_us_L_lvl := low5[1]
+    teen_us_H_brk := false, teen_us_L_brk := false, teen_us_ready := true
+    if not teen_us_orderly
+        lbl(bar_index, high5[1], '⚠ US Teenager OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+if show8Ball and showTeenUS and showUS and teen_us_ready and teen_us_orderly and not na(teen_us_H_lvl)
+    if high > teen_us_H_lvl and not teen_us_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        teen_us_H_brk := true, triggerTeenUSHigh := true
+        lbl(bar_index, high, '▲ US Teenager H', color = teenColor, textcolor = color.white, style = label.style_label_down, size = size.small)
+    if low < teen_us_L_lvl and not teen_us_L_brk and isBreakoutConfirmed(volume, currentAvgVol)
+        teen_us_L_brk := true, triggerTeenUSLow := true
+        lbl(bar_index, low,  '▼ US Teenager L', color = teenColor, textcolor = color.white, style = label.style_label_up, size = size.small)
+
+// === RULE OF 4: 4. 10-MIN KERZE NACH NEWS RELEASE ===
+// News Release: eventHour:eventMinute (z.B. 20:00)
+// 4. Kerze = +30 Min (z.B. 20:30-20:40)
+// Erkennung nutzt Chart-Zeit (multi-TF kompatibel)
+ruleOf4Min = (eventMinute + 30) % 60
+ruleOf4Hour = eventMinute + 30 >= 60 ? (eventHour + 1) % 24 : eventHour
+
+isRuleOf4 = enableSpecialEvent and hour(time, tz) == ruleOf4Hour and minute(time, tz) >= ruleOf4Min and minute(time, tz) < ruleOf4Min + 10
+
+var line ruleOf4HighLine = na, var line ruleOf4LowLine = na, var box ruleOf4Box = na
+var float ruleOf4High = na, var float ruleOf4Low = na
+var float ruleOf4BuildHigh = na, var float ruleOf4BuildLow = na
+var bool ruleOf4LongTriggered = false, var bool ruleOf4ShortTriggered = false
+var bool ruleOf4Ready = false, var bool ruleOf4Building = false
+
+if isRuleOf4 and showRuleOf4
+    if not ruleOf4Building
+        ruleOf4Building := true
+        ruleOf4Ready := false
+        ruleOf4BuildHigh := high
+        ruleOf4BuildLow := low
+        line.delete(ruleOf4HighLine), line.delete(ruleOf4LowLine), box.delete(ruleOf4Box)
+        ruleOf4Box := box.new(time, high, time + 10 * 60 * 1000, low, border_color = ruleOf4Color, bgcolor = color.new(ruleOf4Color, 85), border_width = lineWidth, text = 'Rule of 4 (10m)', text_color = ruleOf4Color, text_size = size.small, xloc = xloc.bar_time)
+        ruleOf4HighLine := line.new(time, high, time + 10 * 60 * 1000, high, color = ruleOf4Color, width = lineWidth, extend = extend.right, xloc = xloc.bar_time)
+        ruleOf4LowLine := line.new(time, low, time + 10 * 60 * 1000, low, color = ruleOf4Color, width = lineWidth, extend = extend.right, xloc = xloc.bar_time)
+    else
+        if high > ruleOf4BuildHigh
+            ruleOf4BuildHigh := high
+        if low < ruleOf4BuildLow
+            ruleOf4BuildLow := low
+        box.set_top(ruleOf4Box, ruleOf4BuildHigh), box.set_bottom(ruleOf4Box, ruleOf4BuildLow)
+        line.set_y1(ruleOf4HighLine, ruleOf4BuildHigh), line.set_y2(ruleOf4HighLine, ruleOf4BuildHigh)
+        line.set_y1(ruleOf4LowLine, ruleOf4BuildLow), line.set_y2(ruleOf4LowLine, ruleOf4BuildLow)
+if not isRuleOf4 and ruleOf4Building
+    ruleOf4Building := false
+    ruleOf4High := ruleOf4BuildHigh, ruleOf4Low := ruleOf4BuildLow
+    ruleOf4LongTriggered := false, ruleOf4ShortTriggered := false, ruleOf4Ready := true
+if enableSpecialEvent and showRuleOf4 and ruleOf4Ready and not na(ruleOf4High)
+    if close > ruleOf4High and not ruleOf4LongTriggered
+        ruleOf4LongTriggered := true, triggerRuleOf4Long := true
+        lbl(bar_index, high, '▲ LONG (Rule of 4)', color = eventColorLong, textcolor = color.white, style = label.style_label_down, size = size.normal)
+    if close < ruleOf4Low and not ruleOf4ShortTriggered
+        ruleOf4ShortTriggered := true, triggerRuleOf4Short := true
+        lbl(bar_index, low, '▼ SHORT (Rule of 4)', color = eventColorShort, textcolor = color.white, style = label.style_label_up, size = size.normal)
+
+// === FOMC PRESS CONFERENCE LOGIC ===
+// Press Conference startet 30 Minuten nach News Release
+// Erkennung nutzt Chart-Zeit (multi-TF kompatibel)
+pressConfMin = (eventMinute + 30) % 60
+pressConfHour = eventMinute + 30 >= 60 ? (eventHour + 1) % 24 : eventHour
+
+isPressConf = enableSpecialEvent and hour(time, tz) == pressConfHour and minute(time, tz) >= pressConfMin and minute(time, tz) < pressConfMin + 5
+
+var line pressConfHighLine = na, var line pressConfLowLine = na, var box pressConfBox = na
+var float pressConfHigh = na, var float pressConfLow = na
+var float pressConfBuildHigh = na, var float pressConfBuildLow = na
+var bool pressConfLongTriggered = false, var bool pressConfShortTriggered = false
+var bool pressConfReady = false, var bool pressConfBuilding = false
+
+if isPressConf and showPressConf5Min
+    if not pressConfBuilding
+        pressConfBuilding := true
+        pressConfReady := false
+        pressConfBuildHigh := high
+        pressConfBuildLow := low
+        line.delete(pressConfHighLine), line.delete(pressConfLowLine), box.delete(pressConfBox)
+        pressConfBox := box.new(time, high, time + 5 * 60 * 1000, low, border_color = eventColor, bgcolor = color.new(eventColor, 85), border_width = lineWidth, text = 'Press Conf (5m)', text_color = eventColor, text_size = size.small, xloc = xloc.bar_time)
+        pressConfHighLine := line.new(time, high, time + 5 * 60 * 1000, high, color = eventColor, width = lineWidth, extend = extend.right, xloc = xloc.bar_time)
+        pressConfLowLine := line.new(time, low, time + 5 * 60 * 1000, low, color = eventColor, width = lineWidth, extend = extend.right, xloc = xloc.bar_time)
+    else
+        if high > pressConfBuildHigh
+            pressConfBuildHigh := high
+        if low < pressConfBuildLow
+            pressConfBuildLow := low
+        box.set_top(pressConfBox, pressConfBuildHigh), box.set_bottom(pressConfBox, pressConfBuildLow)
+        line.set_y1(pressConfHighLine, pressConfBuildHigh), line.set_y2(pressConfHighLine, pressConfBuildHigh)
+        line.set_y1(pressConfLowLine, pressConfBuildLow), line.set_y2(pressConfLowLine, pressConfBuildLow)
+if not isPressConf and pressConfBuilding
+    pressConfBuilding := false
+    pressConfHigh := pressConfBuildHigh, pressConfLow := pressConfBuildLow
+    pressConfLongTriggered := false, pressConfShortTriggered := false, pressConfReady := true
+if enableSpecialEvent and showPressConf5Min and pressConfReady and not na(pressConfHigh)
+    if close > pressConfHigh and not pressConfLongTriggered
+        pressConfLongTriggered := true, triggerPressConfLong := true
+        lbl(bar_index, high, '▲ LONG (Press Conf)', color = eventColorLong, textcolor = color.white, style = label.style_label_down, size = size.normal)
+    if close < pressConfLow and not pressConfShortTriggered
+        pressConfShortTriggered := true, triggerPressConfShort := true
+        lbl(bar_index, low, '▼ SHORT (Press Conf)', color = eventColorShort, textcolor = color.white, style = label.style_label_up, size = size.normal)
+
+// === ALERT CONDITIONS ===
+anyBreakout = triggerEU2ndHigh or triggerEU2ndLow or triggerEU7thHigh or triggerEU7thLow or triggerUS2ndHigh or triggerUS2ndLow or triggerUS7thHigh or triggerUS7thLow or triggerHK50High or triggerHK50Low or triggerJPN225High or triggerJPN225Low or triggerEU1stLow or triggerEU4thHigh or triggerEU4thLow or triggerUS1stLow or triggerUS4thHigh or triggerUS4thLow or triggerEU30PreLow or triggerUS30PreLow or triggerEU10PreHigh or triggerEU10PreLow or triggerUS10PreHigh or triggerUS10PreLow or triggerRuleOf4Long or triggerRuleOf4Short or triggerPressConfLong or triggerPressConfShort or triggerGold0145High or triggerGold0145Low or triggerGold1415High or triggerGold1415Low or triggerFX0815High or triggerFX0815Low or trigger8BallEUHigh or trigger8BallEULow or triggerTeenEUHigh or triggerTeenEULow or trigger8BallUSHigh or trigger8BallUSLow or triggerTeenUSHigh or triggerTeenUSLow
+anyRetest = triggerEU2ndHighRetest or triggerEU2ndLowRetest or triggerEU7thHighRetest or triggerEU7thLowRetest or triggerUS2ndHighRetest or triggerUS2ndLowRetest or triggerUS7thHighRetest or triggerUS7thLowRetest or triggerGold0145HighRetest or triggerGold0145LowRetest or triggerGold1415HighRetest or triggerGold1415LowRetest or triggerFX0815HighRetest or triggerFX0815LowRetest
+anyEUBreakout = triggerEU2ndHigh or triggerEU2ndLow or triggerEU7thHigh or triggerEU7thLow or triggerEU1stLow or triggerEU4thHigh or triggerEU4thLow or triggerEU30PreLow or triggerEU10PreHigh or triggerEU10PreLow
+anyUSBreakout = triggerUS2ndHigh or triggerUS2ndLow or triggerUS7thHigh or triggerUS7thLow or triggerUS1stLow or triggerUS4thHigh or triggerUS4thLow or triggerUS30PreLow or triggerUS10PreHigh or triggerUS10PreLow
+anyGoldBreakout = triggerGold0145High or triggerGold0145Low or triggerGold1415High or triggerGold1415Low
+anyForexBreakout = triggerFX0815High or triggerFX0815Low
+any8BallBreakout = trigger8BallEUHigh or trigger8BallEULow or trigger8BallUSHigh or trigger8BallUSLow
+anyTeenBreakout  = triggerTeenEUHigh or triggerTeenEULow or triggerTeenUSHigh or triggerTeenUSLow
+
+// === ECHTZEIT-ALERTS ===
+if triggerEU2ndHigh
+    alert(syminfo.ticker + ' - EU 2nd 15min HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU2ndLow
+    alert(syminfo.ticker + ' - EU 2nd 15min LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU7thHigh
+    alert(syminfo.ticker + ' - EU 7th 15min HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU7thLow
+    alert(syminfo.ticker + ' - EU 7th 15min LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS2ndHigh
+    alert(syminfo.ticker + ' - US 2nd 15min HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS2ndLow
+    alert(syminfo.ticker + ' - US 2nd 15min LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS7thHigh
+    alert(syminfo.ticker + ' - US 7th 15min HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS7thLow
+    alert(syminfo.ticker + ' - US 7th 15min LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU1stLow
+    alert(syminfo.ticker + ' - EU 1st 5min LOW (bearish) durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU4thHigh
+    alert(syminfo.ticker + ' - EU 4th 5min HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU4thLow
+    alert(syminfo.ticker + ' - EU 4th 5min LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS1stLow
+    alert(syminfo.ticker + ' - US 1st 5min LOW (bearish) durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS4thHigh
+    alert(syminfo.ticker + ' - US 4th 5min HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS4thLow
+    alert(syminfo.ticker + ' - US 4th 5min LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerHK50High or triggerHK50Low
+    alert(syminfo.ticker + ' - HK50 Level durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerJPN225High or triggerJPN225Low
+    alert(syminfo.ticker + ' - JPN225 Level durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU30PreLow
+    alert(syminfo.ticker + ' - EU 30min Pre-Market LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS30PreLow
+    alert(syminfo.ticker + ' - US 30min Pre-Market LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU10PreHigh
+    alert(syminfo.ticker + ' - EU 10min Pre-Market HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerEU10PreLow
+    alert(syminfo.ticker + ' - EU 10min Pre-Market LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS10PreHigh
+    alert(syminfo.ticker + ' - US 10min Pre-Market HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerUS10PreLow
+    alert(syminfo.ticker + ' - US 10min Pre-Market LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerRuleOf4Long
+    alert(syminfo.ticker + ' - ▲ Rule of 4 LONG - Close über 4th 10m Bar High @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerRuleOf4Short
+    alert(syminfo.ticker + ' - ▼ Rule of 4 SHORT - Close unter 4th 10m Bar Low @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerPressConfLong
+    alert(syminfo.ticker + ' - ▲ FOMC LONG - Close über Press Conference High @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerPressConfShort
+    alert(syminfo.ticker + ' - ▼ FOMC SHORT - Close unter Press Conference Low @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerGold0145High
+    alert(syminfo.ticker + ' - Gold 01:45 HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerGold0145Low
+    alert(syminfo.ticker + ' - Gold 01:45 LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerGold1415High
+    alert(syminfo.ticker + ' - Gold 14:15 HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerGold1415Low
+    alert(syminfo.ticker + ' - Gold 14:15 LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerFX0815High
+    alert(syminfo.ticker + ' - FX 08:15 HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerFX0815Low
+    alert(syminfo.ticker + ' - FX 08:15 LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if trigger8BallEUHigh
+    alert(syminfo.ticker + ' - ▲ EU 8 Ball HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if trigger8BallEULow
+    alert(syminfo.ticker + ' - ▼ EU 8 Ball LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerTeenEUHigh
+    alert(syminfo.ticker + ' - ▲ EU Teenager HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerTeenEULow
+    alert(syminfo.ticker + ' - ▼ EU Teenager LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if trigger8BallUSHigh
+    alert(syminfo.ticker + ' - ▲ US 8 Ball HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if trigger8BallUSLow
+    alert(syminfo.ticker + ' - ▼ US 8 Ball LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerTeenUSHigh
+    alert(syminfo.ticker + ' - ▲ US Teenager HIGH durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+if triggerTeenUSLow
+    alert(syminfo.ticker + ' - ▼ US Teenager LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
+// Retest Alerts
+if showRetestAlerts and triggerEU2ndHighRetest
+    alert(syminfo.ticker + ' - EU 2nd HIGH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerEU2ndLowRetest
+    alert(syminfo.ticker + ' - EU 2nd LOW Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerEU7thHighRetest
+    alert(syminfo.ticker + ' - EU 7th HIGH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerEU7thLowRetest
+    alert(syminfo.ticker + ' - EU 7th LOW Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerUS2ndHighRetest
+    alert(syminfo.ticker + ' - US 2nd HIGH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerUS2ndLowRetest
+    alert(syminfo.ticker + ' - US 2nd LOW Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerUS7thHighRetest
+    alert(syminfo.ticker + ' - US 7th HIGH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerUS7thLowRetest
+    alert(syminfo.ticker + ' - US 7th LOW Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerGold0145HighRetest
+    alert(syminfo.ticker + ' - Gold 01:45 HIGH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerGold0145LowRetest
+    alert(syminfo.ticker + ' - Gold 01:45 LOW Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerGold1415HighRetest
+    alert(syminfo.ticker + ' - Gold 14:15 HIGH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerGold1415LowRetest
+    alert(syminfo.ticker + ' - Gold 14:15 LOW Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerFX0815HighRetest
+    alert(syminfo.ticker + ' - FX 08:15 HIGH Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+if showRetestAlerts and triggerFX0815LowRetest
+    alert(syminfo.ticker + ' - FX 08:15 LOW Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
+
+// === ALERTCONDITIONS ===
+alertcondition(anyBreakout, title='ALLE Durchbrueche', message='{{ticker}} - Level durchbrochen @ {{close}}')
+alertcondition(anyRetest, title='ALLE Retests', message='{{ticker}} - Retest @ {{close}}')
+alertcondition(anyBreakout or anyRetest, title='Breaks + Retests', message='{{ticker}} - Break/Retest @ {{close}}')
+alertcondition(anyEUBreakout, title='EU Durchbrueche', message='{{ticker}} - EU Level @ {{close}}')
+alertcondition(anyUSBreakout, title='US Durchbrueche', message='{{ticker}} - US Level @ {{close}}')
+alertcondition(triggerEU2ndHigh, title='EU 2nd HIGH', message='{{ticker}} - EU 2nd 15m HIGH @ {{close}}')
+alertcondition(triggerEU2ndLow, title='EU 2nd LOW', message='{{ticker}} - EU 2nd 15m LOW @ {{close}}')
+alertcondition(triggerEU7thHigh, title='EU 7th HIGH', message='{{ticker}} - EU 7th 15m HIGH @ {{close}}')
+alertcondition(triggerEU7thLow, title='EU 7th LOW', message='{{ticker}} - EU 7th 15m LOW @ {{close}}')
+alertcondition(triggerUS2ndHigh, title='US 2nd HIGH', message='{{ticker}} - US 2nd 15m HIGH @ {{close}}')
+alertcondition(triggerUS2ndLow, title='US 2nd LOW', message='{{ticker}} - US 2nd 15m LOW @ {{close}}')
+alertcondition(triggerUS7thHigh, title='US 7th HIGH', message='{{ticker}} - US 7th 15m HIGH @ {{close}}')
+alertcondition(triggerUS7thLow, title='US 7th LOW', message='{{ticker}} - US 7th 15m LOW @ {{close}}')
+alertcondition(triggerEU4thHigh, title='EU 4th 5m HIGH', message='{{ticker}} - EU 4th 5m HIGH @ {{close}}')
+alertcondition(triggerEU4thLow, title='EU 4th 5m LOW', message='{{ticker}} - EU 4th 5m LOW @ {{close}}')
+alertcondition(triggerEU1stLow, title='EU 1st 5m LOW (bearish)', message='{{ticker}} - EU 1st 5m LOW @ {{close}}')
+alertcondition(triggerUS4thHigh, title='US 4th 5m HIGH', message='{{ticker}} - US 4th 5m HIGH @ {{close}}')
+alertcondition(triggerUS4thLow, title='US 4th 5m LOW', message='{{ticker}} - US 4th 5m LOW @ {{close}}')
+alertcondition(triggerUS1stLow, title='US 1st 5m LOW (bearish)', message='{{ticker}} - US 1st 5m LOW @ {{close}}')
+alertcondition(triggerHK50High or triggerHK50Low, title='HK50', message='{{ticker}} - HK50 Level @ {{close}}')
+alertcondition(triggerJPN225High or triggerJPN225Low, title='JPN225', message='{{ticker}} - JPN225 Level @ {{close}}')
+alertcondition(triggerEU30PreLow, title='EU 30m Pre LOW', message='{{ticker}} - EU 30m Pre LOW @ {{close}}')
+alertcondition(triggerUS30PreLow, title='US 30m Pre LOW', message='{{ticker}} - US 30m Pre LOW @ {{close}}')
+alertcondition(triggerEU10PreHigh, title='EU 10m Pre HIGH', message='{{ticker}} - EU 10m Pre HIGH @ {{close}}')
+alertcondition(triggerEU10PreLow, title='EU 10m Pre LOW', message='{{ticker}} - EU 10m Pre LOW @ {{close}}')
+alertcondition(triggerUS10PreHigh, title='US 10m Pre HIGH', message='{{ticker}} - US 10m Pre HIGH @ {{close}}')
+alertcondition(triggerUS10PreLow, title='US 10m Pre LOW', message='{{ticker}} - US 10m Pre LOW @ {{close}}')
+alertcondition(triggerRuleOf4Long or triggerRuleOf4Short, title='Rule of 4 Signal', message='{{ticker}} - Rule of 4 Signal @ {{close}}')
+alertcondition(triggerPressConfLong or triggerPressConfShort, title='FOMC Signal', message='{{ticker}} - FOMC Signal @ {{close}}')
+alertcondition(triggerRuleOf4Long or triggerRuleOf4Short or triggerPressConfLong or triggerPressConfShort, title='Alle Event Signals', message='{{ticker}} - Event Signal @ {{close}}')
+alertcondition(anyGoldBreakout, title='Gold Sessions', message='{{ticker}} - Gold Session Level @ {{close}}')
+alertcondition(anyForexBreakout, title='Forex Sessions', message='{{ticker}} - FX Session Level @ {{close}}')
+// --- 8 Ball & Teenager (Tom Hougaard) ---
+alertcondition(any8BallBreakout, title='8 Ball Signal (alle)', message='{{ticker}} - 8 Ball Break @ {{close}}')
+alertcondition(anyTeenBreakout,  title='Teenager Signal (alle)', message='{{ticker}} - Teenager Break @ {{close}}')
+alertcondition(any8BallBreakout or anyTeenBreakout, title='8 Ball + Teenager (alle)', message='{{ticker}} - Hougaard Setup @ {{close}}')

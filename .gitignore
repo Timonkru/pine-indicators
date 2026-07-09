@@ -1,0 +1,14 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/
+
+# ---------------------------------------------------------------------------
+# PROPRIETAER — NIEMALS veroeffentlichen. Signal-Engine ist Kern-IP.
+# Falls die Datei je in diesen Ordner geraet, bleibt sie ungetrackt.
+# ---------------------------------------------------------------------------
+kasse_signal_engine*.pine
+*signal_engine*.pine

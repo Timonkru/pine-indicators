@@ -1,0 +1,88 @@
+//@version=6
+// VWAP + STD-DEV-BÄNDER — mit optionaler FUTURE-Volumen-Quelle
+// Läuft auf dem CFD-Chart, kann aber das echte Volumen vom Future ziehen
+// (request.security). Preis = CFD (hlc3), Gewichtung = Future-Volumen -> die
+// Basis-Verschiebung ist automatisch erledigt (VWAP nutzt den CFD-Preis).
+// Anker: Session/Woche/Monat. Bänder 1/2/3 Sigma.
+// Dient AUCH als Test: Wenn "Future-Symbol" korrekt zieht, geht auch das Profil.
+indicator("VWAP + StdDev (Future-Vol)", overlay = true)
+
+anchorIn = input.string("Session (Tag)", "Anker",
+     options = ["Session (Tag)", "Woche", "Monat"], group = "VWAP")
+srcIn    = input.source(hlc3, "Preis-Quelle", group = "VWAP")
+volMode  = input.string("Chart (CFD)", "Volumen-Quelle",
+     options = ["Chart (CFD)", "Future-Symbol"], group = "Volumen",
+     tooltip = "Future = echtes Börsenvolumen via request.security. Preis bleibt der CFD-Preis dieses Charts.")
+autoFut  = input.bool(true, "Future-Symbol AUTO erkennen", group = "Volumen")
+futMan   = input.symbol("EUREX:FDAX1!", "…sonst manuell", group = "Volumen")
+
+f_detectFut() =>
+    s = str.lower(syminfo.ticker) + " " + str.lower(syminfo.prefix) + " " + str.lower(syminfo.description)
+    isNQ  = str.contains(s, "nas") or str.contains(s, "ndx") or str.contains(s, "us100") or str.contains(s, "ustec") or str.contains(s, "tech100") or str.contains(s, "nq1") or str.contains(s, "nq!")
+    isYM  = str.contains(s, "dow") or str.contains(s, "us30") or str.contains(s, "dji") or str.contains(s, "ym1") or str.contains(s, "ym!") or str.contains(s, "wall street")
+    isDAX = str.contains(s, "dax") or str.contains(s, "ger40") or str.contains(s, "de40") or str.contains(s, "german")
+    isFTSE = str.contains(s, "ftse") or str.contains(s, "uk100") or str.contains(s, "ukx")
+    isES  = str.contains(s, "us500") or str.contains(s, "sp500") or str.contains(s, "spx") or str.contains(s, "s&p") or str.contains(s, "es1") or str.contains(s, "es!")
+    isDAX ? "EUREX:FDAX1!" : isFTSE ? "ICEEUR:Z1!" : isNQ ? "CME_MINI:NQ1!" :
+     isYM ? "CBOT_MINI:YM1!" : isES ? "CME_MINI:ES1!" : syminfo.tickerid
+
+futSym   = autoFut ? f_detectFut() : futMan
+
+showBands = input.bool(true,  "Std-Dev-Bänder zeigen", group = "Bänder")
+m1 = input.float(1.0, "Band 1 (σ)", step = 0.5, group = "Bänder")
+m2 = input.float(2.0, "Band 2 (σ)", step = 0.5, group = "Bänder")
+m3 = input.float(3.0, "Band 3 (σ)", step = 0.5, group = "Bänder")
+
+// --- Future-Volumen holen (na wenn kein Datenzugang -> Fallback Chart-Vol) ---
+futVol = request.security(futSym, timeframe.period, volume, ignore_invalid_symbol = true)
+useFut = volMode == "Future-Symbol"
+vol    = useFut ? (na(futVol) ? volume : futVol) : volume
+
+// --- Anker-Reset ---
+res  = anchorIn == "Woche" ? "W" : anchorIn == "Monat" ? "M" : "D"
+newP = timeframe.change(res)
+
+var float sumPV  = 0.0
+var float sumV   = 0.0
+var float sumP2V = 0.0
+if newP or bar_index == 0
+    sumPV  := 0.0
+    sumV   := 0.0
+    sumP2V := 0.0
+
+v = nz(vol)
+sumPV  += srcIn * v
+sumV   += v
+sumP2V += srcIn * srcIn * v
+
+vwap = sumV > 0 ? sumPV / sumV : na
+varc = sumV > 0 ? math.max(sumP2V / sumV - vwap * vwap, 0.0) : 0.0
+dev  = math.sqrt(varc)
+
+// --- Plots ---
+pV = plot(vwap, "VWAP", color = color.new(color.orange, 0), linewidth = 2)
+
+u1 = vwap + m1 * dev
+l1 = vwap - m1 * dev
+u2 = vwap + m2 * dev
+l2 = vwap - m2 * dev
+u3 = vwap + m3 * dev
+l3 = vwap - m3 * dev
+
+pu1 = plot(showBands ? u1 : na, "‑1σ", color = color.new(color.gray, 40))
+pl1 = plot(showBands ? l1 : na, "‑1σ", color = color.new(color.gray, 40))
+pu2 = plot(showBands ? u2 : na, "‑2σ", color = color.new(color.gray, 55))
+pl2 = plot(showBands ? l2 : na, "‑2σ", color = color.new(color.gray, 55))
+plot(showBands ? u3 : na, "‑3σ", color = color.new(color.gray, 70), style = plot.style_circles)
+plot(showBands ? l3 : na, "‑3σ", color = color.new(color.gray, 70), style = plot.style_circles)
+
+fill(pu1, pl1, color = color.new(color.orange, 92))
+fill(pu2, pu1, color = color.new(color.blue, 94))
+fill(pl1, pl2, color = color.new(color.blue, 94))
+
+// --- Status-Label: bestaetigt welche Volumen-Quelle aktiv ist ---
+if barstate.islast
+    txt = (useFut ? "Future-Vol: " + futSym + (na(futVol) ? " (KEINE DATEN -> CFD-Fallback!)" : " ✓")
+                  : "Chart-Vol (CFD)")
+    label.new(bar_index, vwap, txt, style = label.style_label_left,
+         color = color.new(color.black, 20), textcolor = color.white, size = size.small)
