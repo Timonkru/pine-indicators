@@ -10,8 +10,8 @@ All overlays, Pine v6, mostly label-free (signals read from color / geometry).
 |------|-----------|-------------------------|
 | `fisher_acd_addon.pine` | Fisher ACD + Pivot-Range Add-on v3 | ACD Opening Range System by Fisher |
 | `onr_multi_index_sessions.pine` | ONR Multi-Index + Sessions | Overnight Range (ONR) & Session Boxes |
-| `kasse_alerts.pine` | Opening-range setups + volume confirmation | Hougaard Opening Setups *(confirm)* |
-| `kasse_alerts_swing_v7.2.pine` | Weekly / multi-day swing levels | Weekly Swing Levels — Hougaard COT *(confirm)* |
+| `kasse_alerts.pine` | Opening-range setups + volume confirmation | Hougaard Opening Setups (School Run / Brunch / 8-Ball / Teen) |
+| `kasse_alerts_swing_v7.2.pine` | Weekly / multi-day swing levels | Weekly Swing Levels — Thu/Fri/Mon Hougaard COT |
 | `future_volume_profile.pine` | Futures volume profile on any chart (POC / VA / HVN-LVN) | *new — not yet published* |
 | `vwap_stdev_futurevol.pine` | VWAP + StdDev bands, real futures volume | *new — not yet published* |
 
