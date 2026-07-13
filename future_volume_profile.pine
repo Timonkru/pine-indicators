@@ -42,11 +42,21 @@ f_detectFut() =>
 futSym = autoFut ? f_detectFut() : futManual
 futVol = request.security(futSym, timeframe.period, volume, ignore_invalid_symbol = true)
 useFut = not useChart
-volBar = useFut ? (na(futVol) ? volume : futVol) : volume
+// FIX 2026-07-13: KEIN stiller Fallback auf Chart-Volumen mehr — CFD-Ticks und
+// Future-Kontrakte sind verschiedene Einheiten; der Mix flutete die Nacht-Bars
+// des 24h-CFD und liess das Profil vom FDAX-Chart divergieren. Bars ohne
+// Future-Daten tragen nichts bei (Akkumulations-Guard prueft na/0).
+volBar = useFut ? futVol : volume
 
 // ---- Anker ----
+// FIX 2026-07-13: Optionaler Future-Handelstag-Anker (CFD-Mitternacht vs.
+// Future-Session-Start war die zweite Divergenz-Quelle zwischen den Charts)
+futDayAnk = input.bool(true, "Tages-Anker = Future-Handelstag", group = "Profil",
+     tooltip = "Session-Reset am Tageswechsel des FUTURE statt des Chart-Symbols -> Profil auf CFD- und Future-Chart identisch verankert.")
 res  = anchorIn == "Woche" ? "W" : anchorIn == "Monat" ? "M" : "D"
-newP = timeframe.change(res)
+futDayT = request.security(futSym, "D", time, ignore_invalid_symbol = true)
+futDayChg = nz(ta.change(futDayT)) != 0
+newP = res == "D" and futDayAnk and useFut ? futDayChg : timeframe.change(res)
 
 var map<int, float> vmap = map.new<int, float>()
 var float binW = na

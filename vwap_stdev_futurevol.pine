@@ -33,14 +33,25 @@ m1 = input.float(1.0, "Band 1 (σ)", step = 0.5, group = "Bänder")
 m2 = input.float(2.0, "Band 2 (σ)", step = 0.5, group = "Bänder")
 m3 = input.float(3.0, "Band 3 (σ)", step = 0.5, group = "Bänder")
 
-// --- Future-Volumen holen (na wenn kein Datenzugang -> Fallback Chart-Vol) ---
+// --- Future-Volumen holen ---
+// FIX 2026-07-13: KEIN stiller Fallback auf Chart-Volumen mehr. CFD-Tick-Volumen
+// und Future-Kontrakte sind verschiedene Einheiten — der Mix hat die Nacht-Bars
+// des 24h-CFD mit Fantasie-Gewichten geflutet (Divergenz DAX-CFD vs FDAX-Chart).
+// Bars ohne Future-Daten zaehlen jetzt einfach nicht (nz(vol)=0 in der Summe).
 futVol = request.security(futSym, timeframe.period, volume, ignore_invalid_symbol = true)
 useFut = volMode == "Future-Symbol"
-vol    = useFut ? (na(futVol) ? volume : futVol) : volume
+vol    = useFut ? futVol : volume
 
 // --- Anker-Reset ---
+// FIX 2026-07-13: Optionaler Future-Handelstag-Anker — timeframe.change("D")
+// feuert auf dem CFD zur Broker-Mitternacht, auf dem Future zum Session-Start
+// -> verschiedene Akkumulations-Fenster = zweite Divergenz-Quelle.
+futDayAnk = input.bool(true, "Tages-Anker = Future-Handelstag", group = "VWAP",
+     tooltip = "Reset am Tageswechsel des FUTURE statt des Chart-Symbols. Damit ist der VWAP auf CFD- und Future-Chart identisch verankert.")
 res  = anchorIn == "Woche" ? "W" : anchorIn == "Monat" ? "M" : "D"
-newP = timeframe.change(res)
+futDayT = request.security(futSym, "D", time, ignore_invalid_symbol = true)
+futDayChg = nz(ta.change(futDayT)) != 0
+newP = res == "D" and futDayAnk and useFut ? futDayChg : timeframe.change(res)
 
 var float sumPV  = 0.0
 var float sumV   = 0.0
@@ -82,7 +93,7 @@ fill(pl1, pl2, color = color.new(color.blue, 94))
 
 // --- Status-Label: bestaetigt welche Volumen-Quelle aktiv ist ---
 if barstate.islast
-    txt = (useFut ? "Future-Vol: " + futSym + (na(futVol) ? " (KEINE DATEN -> CFD-Fallback!)" : " ✓")
+    txt = (useFut ? "Future-Vol: " + futSym + (na(futVol) ? " (KEINE DATEN - Bars ohne Future-Vol zaehlen NICHT)" : " ✓")
                   : "Chart-Vol (CFD)")
     label.new(bar_index, vwap, txt, style = label.style_label_left,
          color = color.new(color.black, 20), textcolor = color.white, size = size.small)
