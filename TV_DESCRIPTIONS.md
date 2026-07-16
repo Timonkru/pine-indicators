@@ -9,9 +9,39 @@ bewusst deutsch/privat — statische Tageswerte sind ohnehin nicht publizierbar
 
 ---
 
-## 1) Futures Volume Profile (CFD)
+## EINHEITLICHES SCHEMA (Beschluss 16.07. — „man sieht, es gehört zusammen")
 
-**Titel:** Futures Volume Profile (CFD)
+**Titel-Grammatik:** `<Werkzeug> — <Scope>`, Paare teilen sich den Wortstamm:
+
+| Skript | Einheitlicher Titel |
+|---|---|
+| Futures-Vol-Profil | **Futures Volume Profile — CFD Charts** |
+| Futures-Vol-VWAP | **Futures Volume VWAP + Bands — CFD Charts** |
+| Kasse Alerts | **Session Candle Levels & Alerts — Intraday** |
+| Kasse Swing | **Session Candle Levels & Alerts — Weekly Swing** |
+| Fisher ACD | **Opening Range ACD + Pivot Ranges — Label-Free** |
+| ONR Sessions | **Overnight Range & Sessions — Multi-Index** |
+
+Die Paare (Futures Volume ×2, Session Candle Levels ×2, Range ×2) erkennen
+sich am Stamm; alle sechs an der Em-Dash-Grammatik.
+
+**Beschreibungs-Struktur (immer gleich):**
+1. Ein Satz: was + für wen
+2. „How it works" (Bullets)
+3. „How to use it" (2-3 Sätze)
+4. Einheitlicher Schlusssatz (in JEDE Beschreibung, TV-intern = regelkonform):
+
+> *This script is part of a consistent set of open-source session, range and
+> volume tools — the companions are on my profile.*
+
+**Moderator-Abschluss (wenn alle 6 neu online sind):** kurz melden, dass alle
+Publikationen regelkonform neu veröffentlicht wurden (EN-UI, EN-Beschreibung,
+Clean Charts, keine Brands), Liste der 6 neuen anfügen, höflich um Entfernung
+der versteckten Alt-Skripte bitten.
+
+## 1) Futures Volume Profile — CFD Charts
+
+**Titel:** Futures Volume Profile — CFD Charts
 
 **Beschreibung (Copy-Paste):**
 
@@ -41,9 +71,9 @@ chart. Zone width is ATR-derived by default or fixed in points.
 
 ---
 
-## 2) VWAP + StdDev Bands (Futures Volume)
+## 2) Futures Volume VWAP + Bands — CFD Charts
 
-**Titel:** VWAP + StdDev Bands (Futures Volume)
+**Titel:** Futures Volume VWAP + Bands — CFD Charts
 
 **Beschreibung (Copy-Paste):**
 
@@ -68,9 +98,9 @@ stretch zones) — but weighted by real market participation.
 
 ---
 
-## 3) Fisher ACD + Pivot Range (label-free)
+## 3) Opening Range ACD + Pivot Ranges — Label-Free
 
-**Titel:** Fisher ACD + Pivot Range (label-free)
+**Titel:** Opening Range ACD + Pivot Ranges — Label-Free
 
 **Beschreibung:**
 
@@ -93,9 +123,9 @@ How it works:
   narrow (expansion expected).
 Alerts for confirmed A-levels, C-failures and pivot-range crosses.
 
-## 4) ONR Multi-Index + Sessions
+## 4) Overnight Range & Sessions — Multi-Index
 
-**Titel:** Overnight Range Multi-Index + Sessions
+**Titel:** Overnight Range & Sessions — Multi-Index
 
 **Beschreibung:**
 
@@ -115,9 +145,9 @@ How it works:
   previous day cash close is drawn as a line for gap-up/gap-down context.
 Use the ONR high/low as the breakout frame for the cash session.
 
-## 5) Kasse Alerts (intraday session candles)
+## 5) Session Candle Levels & Alerts — Intraday
 
-**Titel:** Session Candle Levels & Breakout Alerts (intraday)
+**Titel:** Session Candle Levels & Alerts — Intraday
 
 **Beschreibung:**
 
@@ -138,9 +168,9 @@ How it works:
 - US/EU DST shifts are handled automatically.
 All levels come with alert conditions, so the chart can stay closed.
 
-## 6) Kasse Alerts – Swing (weekly levels)
+## 6) Session Candle Levels & Alerts — Weekly Swing
 
-**Titel:** Weekly Swing Levels & Breakout Alerts
+**Titel:** Session Candle Levels & Alerts — Weekly Swing
 
 **Beschreibung:**
 
