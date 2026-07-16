@@ -1,13 +1,11 @@
 // This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © KasseATB
 //@version=6
-indicator('Kasse Alerts – Swing v7.2', overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator('Session Candle Levels & Alerts — Weekly Swing', shorttitle = 'Session Levels WS', overlay = true, max_lines_count = 500, max_labels_count = 500)
 // ============================================================
-//  v7.2 – Swing Levels + COT Bias (erweitert)
-//  NEU: DAX/FTSE via EUR/GBP-Proxy (Score invertiert)
-//  NEU: Extreme-Erkennung – MM kontraer bei Crowded Trades
-//  NEU: Hintergrund: Datenwoche gruen/rot, Projektion grau
-//  v7.1: Mon/Wed/PW Linien, COT TF-Fix
+//  Swing levels + COT bias
+//  DAX/FTSE via EUR/GBP proxy (score inverted)
+//  Extreme detection – managed money read contrarian on crowded trades
+//  Background: data week green/red, projection gray
 // ============================================================
 import TradingView/LibraryCOT/4 as cot
 // === LEVELS ===
@@ -27,27 +25,27 @@ prevMonthColor   = input.color(color.fuchsia, 'Prev Month', group = 'Colors')
 tfmColor        = input.color(color.maroon, 'Thu-Fri-Mon', group = 'Colors')
 lineWidth       = input.int(2, 'Line width', minval = 1, maxval = 5, group = 'Colors')
 // === HOUGAARD PATTERNS ===
-showTFM           = input.bool(true,  'Thu-Fri-Mon pattern active', group = 'Hougaard Patterns', tooltip = 'Tom Hougaards Setup: Wenn Friday-High < Thursday-High, dann erwarte Mon (oder Di bei Feiertag) Move auf Friday-Low.')
-showTFMLines      = input.bool(true,  'Fri Low (Target) + Fri High (Stop) zeichnen', group = 'Hougaard Patterns')
+showTFM           = input.bool(true,  'Thu-Fri-Mon pattern active', group = 'Hougaard Patterns', tooltip = 'Tom Hougaard setup: if the Friday high stays below the Thursday high, expect Monday (or Tuesday on holidays) to move to the Friday low.')
+showTFMLines      = input.bool(true,  'Draw Fri low (target) + Fri high (stop)', group = 'Hougaard Patterns')
 showTFMHelpers    = input.bool(true,  'Show Thu/Fri H/L lines', group = 'Hougaard Patterns')
-tfmAlertOnArm     = input.bool(true,  'Alert wenn Setup armiert (Mo Open)', group = 'Hougaard Patterns')
-tfmIncludeTue     = input.bool(true,  'Auch Di einbeziehen (Holiday-Adjustment)', group = 'Hougaard Patterns')
+tfmAlertOnArm     = input.bool(true,  'Alert when setup arms (Mon open)', group = 'Hougaard Patterns')
+tfmIncludeTue     = input.bool(true,  'Include Tuesday (holiday adjustment)', group = 'Hougaard Patterns')
 // === VOLUMEN ===
 showVolLabels  = input.bool(true, 'Volume at breakout', group = 'Volume')
-volThreshold   = input.float(1.3, 'Vol-Schwelle', minval = 1.0, maxval = 3.0, step = 0.1, group = 'Volume')
-volPeriod      = input.int(20, 'Vol-Periode', minval = 5, maxval = 100, group = 'Volume')
+volThreshold   = input.float(1.3, 'Volume threshold (x average)', minval = 1.0, maxval = 3.0, step = 0.1, group = 'Volume')
+volPeriod      = input.int(20, 'Averaging period', minval = 5, maxval = 100, group = 'Volume')
 breakoutMode   = input.string('Volume-confirmed', 'Mode', options = ['Immediate', 'Volume-confirmed'], group = 'Volume')
 breakoutVolMin = input.float(1.0, 'Min. vol for a break', minval = 0.5, maxval = 2.0, step = 0.1, group = 'Volume')
 // === RETEST ===
 showRetestLabels = input.bool(true, 'Retest Labels', group = 'Retest')
 showRetestAlerts = input.bool(true, 'Retest Alerts', group = 'Retest')
 // === COT BIAS ===
-showCOT    = input.bool(true, 'COT Bias Hintergrund', group = 'COT')
+showCOT    = input.bool(true, 'COT bias background', group = 'COT')
 cotMode    = input.string('Auto', 'CFTC Code', options = ['Auto', 'Manual'], group = 'COT')
-manCode    = input.string('', 'CFTC Code (manuell)', group = 'COT', tooltip = '088691=Gold, 099741=EUR, 13874+=SPX, 096742=GBP')
-bgAlpha    = input.int(92, 'COT Transparenz', minval = 80, maxval = 98, group = 'COT')
+manCode    = input.string('', 'CFTC code (manual)', group = 'COT', tooltip = '088691=Gold, 099741=EUR, 13874+=SPX, 096742=GBP')
+bgAlpha    = input.int(92, 'COT transparency', minval = 80, maxval = 98, group = 'COT')
 showCOTtbl = input.bool(true, 'COT Table', group = 'COT')
-cotExtPct  = input.int(90, 'Extreme Percentile', minval = 70, maxval = 99, group = 'COT', tooltip = 'Ab diesem Pctile: MM wird kontraer (Crowded Trade)')
+cotExtPct  = input.int(90, 'Extreme percentile', minval = 70, maxval = 99, group = 'COT', tooltip = 'Above this percentile, managed money is read contrarian (crowded trade)')
 // ============================================================
 //  FUNKTIONEN
 // ============================================================
@@ -60,7 +58,7 @@ getVolInfo(vol, avgVol) =>
     [txt, clr, sym]
 isConfirmed(vol, avgVol) =>
     breakoutMode == 'Immediate' or vol >= avgVol * breakoutVolMin
-// v7.2: Lookback – haelt je Level-Stream nur die letzten N Linien + Labels, loescht den Rest
+// lookback – keeps only the last N lines + labels per level stream, deletes the rest
 drawLvl(lns, lbls, ln, lb, n) =>
     array.push(lns, ln)
     array.push(lbls, lb)
@@ -143,7 +141,7 @@ if array.size(wedHLines) > 0
 if array.size(wedLLines) > 0
     line.set_x2(array.last(wedLLines), time)
 // ============================================================
-//  THU & FRI TRACKING (für Hougaard Thu-Fri-Mon Pattern)
+//  THU & FRI TRACKING (for the Hougaard Thu-Fri-Mon pattern)
 // ============================================================
 var float thuH = na, var float thuL = na
 var int   thuHTime = 0, var int thuLTime = 0
@@ -164,7 +162,7 @@ if isThu
             thuL := low, thuLTime := time
 if isFri
     if newDay
-        // Donnerstag-Linien einmalig zeichnen
+        // draw the Thursday lines once
         if showTFMHelpers and not na(thuH)
             drawLvl(thuHLines, thuHLabs, line.new(thuHTime, thuH, time, thuH, xloc = xloc.bar_time, color = color.new(tfmColor, 40), width = 1, style = line.style_dashed), label.new(thuHTime, thuH, 'Thu H', xloc = xloc.bar_time, color = color.new(tfmColor, 40), textcolor = color.white, style = label.style_label_down, size = size.tiny), labelLookback)
             drawLvl(thuLLines, thuLLabs, line.new(thuLTime, thuL, time, thuL, xloc = xloc.bar_time, color = color.new(tfmColor, 40), width = 1, style = line.style_dashed), label.new(thuLTime, thuL, 'Thu L', xloc = xloc.bar_time, color = color.new(tfmColor, 40), textcolor = color.white, style = label.style_label_up,   size = size.tiny), labelLookback)
@@ -174,13 +172,13 @@ if isFri
             friH := high, friHTime := time
         if low  < nz(friL, low)
             friL := low, friLTime := time
-// Live-Update: Donnerstag-Linien bis Freitag-Ende mitziehen
+// live update: extend the Thursday lines until Friday's end
 if array.size(thuHLines) > 0 and isFri
     line.set_x2(array.last(thuHLines), time)
     line.set_x2(array.last(thuLLines), time)
 // ============================================================
 //  THU-FRI-MON PATTERN (Tom Hougaard)
-//  Setup: Fri H < Thu H  →  Erwartung: Mon (oder Di bei Holiday) hit Fri L
+//  Setup: Fri H < Thu H -> expectation: Mon (or Tue on holidays) hits Fri L
 // ============================================================
 var bool tfmArmed     = false
 var bool tfmTargetHit = false
@@ -190,7 +188,7 @@ var line lnTFMTarget = na, var line lnTFMStop = na
 var bool tTFMArm = false, var bool tTFMBreak = false
 tTFMArm   := false
 tTFMBreak := false
-// Setup-Check: nur am ERSTEN Bar des Montag-Tages
+// setup check: only on the FIRST bar of the Monday session
 if showTFM and isMon and newDay and not na(friH) and not na(thuH) and not na(friL)
     line.delete(lnTFMTarget), line.delete(lnTFMStop)
     if friH < thuH
@@ -205,16 +203,16 @@ if showTFM and isMon and newDay and not na(friH) and not na(thuH) and not na(fri
             label.new(tfmFriHTime, tfmFriH, 'TFM Stop (Fri H)',   xloc = xloc.bar_time, color = color.new(tfmColor, 30), textcolor = color.white, style = label.style_label_down, size = size.tiny)
     else
         tfmArmed := false
-// Linien mitziehen solange armiert
+// extend the lines while the setup is armed
 if not na(lnTFMTarget) and showTFMLines and tfmArmed
     line.set_x2(lnTFMTarget, time)
 if not na(lnTFMStop) and showTFMLines and tfmArmed
     line.set_x2(lnTFMStop, time)
-// Pattern endet bei neuer Woche
+// pattern ends at the new week
 if newWeek
     tfmArmed     := false
     tfmTargetHit := false
-// Trigger: Mon (und optional Di) – Bruch von Fri L
+// trigger: Mon (and optionally Tue) – break of Fri L
 _tfmActive = tfmArmed and not tfmTargetHit and (isMon or (tfmIncludeTue and isTue))
 if showTFM and _tfmActive and not na(tfmFriL)
     if low <= tfmFriL and isConfirmed(volume, currentAvgVol)
@@ -423,9 +421,9 @@ getCFTCCode() =>
     else if str.contains(symLow, "natgas") or str.contains(symLow, "ngas") or syminfo.root == "NG"
         "023651"
     else if isDAX
-        "099741"   // EUR-Proxy (Score wird invertiert)
+        "099741"   // EUR proxy (score is inverted)
     else if isFTSE
-        "096742"   // GBP-Proxy (Score wird invertiert)
+        "096742"   // GBP proxy (score is inverted)
     else if syminfo.basecurrency == "EUR" or str.contains(symLow, "eur")
         "099741"
     else if syminfo.basecurrency == "GBP" or str.contains(symLow, "gbp")
@@ -466,10 +464,10 @@ mmNet = nz(mmLong) - nz(mmShort)
 rtNet = nz(rtLong) - nz(rtShort)
 cmNet = nz(cmLong) - nz(cmShort)
 // ============================================================
-//  v7.2: EXTREME-ERKENNUNG (Percentile-Rank MM Netto)
-//  Historischer Vergleich ueber ~2 Jahre (104 Wochen)
-//  Extreme (Top/Bottom-Dezil): MM wird kontraer
-//  Crowded (10 Pctile darunter): MM wird gedaempft
+//  EXTREME DETECTION (percentile rank of MM net)
+//  historical comparison over ~2 years (104 weeks)
+//  extreme (top/bottom decile): MM read contrarian
+//  crowded (10 pctile below that): MM dampened
 // ============================================================
 var array<float> mmNetHist = array.new_float(0)
 if ta.change(time('W')) != 0 and not na(mmNet)
@@ -487,7 +485,7 @@ if _hSz > 10
 mmExtreme = mmPctile > cotExtPct or mmPctile < (100 - cotExtPct)
 mmCrowded = not mmExtreme and (mmPctile > (cotExtPct - 10) or mmPctile < (100 - cotExtPct + 10))
 // ============================================================
-//  COT WOCHENÄNDERUNG – TF-UNABHÄNGIG (v7.1 FIX)
+//  COT WEEKLY CHANGE – TIMEFRAME-INDEPENDENT
 // ============================================================
 var float mmChg = 0.0
 var float rtChg = 0.0
@@ -502,11 +500,11 @@ if rtChanged
 if cmChanged
     cmChg_val := cmNet - cmNet[1]
 // ============================================================
-//  BIAS LOGIK – v7.2: Extreme-Daempfung + Proxy-Inversion
+//  BIAS LOGIC – extreme dampening + proxy inversion
 // ============================================================
-// Schwellwerte Wochen-Aenderung:
-//   < 5% = Rauschen    5-15% = normal (x1)
-//   15-30% = stark (x2)    > 30% = massiv (x3)
+// weekly-change thresholds:
+//   < 5% = noise    5-15% = normal (x1)
+//   15-30% = strong (x2)    > 30% = massive (x3)
 mmPct = mmNet != 0 ? math.abs(mmChg / mmNet) * 100 : 0.0
 rtPct = rtNet != 0 ? math.abs(rtChg / rtNet) * 100 : 0.0
 cmPct = cmNet != 0 ? math.abs(cmChg_val / cmNet) * 100 : 0.0
@@ -515,27 +513,27 @@ getChgWeight(pct) =>
 mmChgW = getChgWeight(mmPct)
 rtChgW = getChgWeight(rtPct)
 cmChgW = getChgWeight(cmPct)
-// === MANAGED MONEY – v7.2: Extreme-Daempfung ===
-//   Normal:   Gewicht 2 direktional (folgen)
-//   Crowded:  Gewicht 1 (gedaempft – Vorsicht)
-//   Extreme:  Gewicht -2 kontraer (ueberfuellter Trade)
+// === MANAGED MONEY – extreme dampening ===
+//   normal:   weight 2 directional (follow)
+//   crowded:  weight 1 (dampened – caution)
+//   extreme:  weight -2 contrarian (crowded trade)
 mmPosScore = mmExtreme ? (mmNet > 0 ? -2 : 2) : mmCrowded ? (mmNet > 0 ? 1 : -1) : (mmNet > 0 ? 2 : mmNet < 0 ? -2 : 0)
 mmChgDir = mmChg > 0 ? 1 : mmChg < 0 ? -1 : 0
 mmChgScore = mmChgDir * mmChgW
-// === RETAIL (Contra – invertiert) ===
+// === RETAIL (contrarian – inverted) ===
 rtPosScore = rtNet > 0 ? -1 : rtNet < 0 ? 1 : 0
 rtChgDir = rtChg > 0 ? -1 : rtChg < 0 ? 1 : 0
 rtChgScore = rtChgDir * rtChgW
-// === COMMERCIALS (Contra – invertiert) ===
+// === COMMERCIALS (contrarian – inverted) ===
 cmPosScore = cmNet > 0 ? -1 : cmNet < 0 ? 1 : 0
 cmChgDir = cmChg_val > 0 ? -1 : cmChg_val < 0 ? 1 : 0
 cmChgScore = cmChgDir * cmChgW
-// === GESAMTSCORE – v7.2: Proxy-Inversion fuer DAX/FTSE ===
-// DAX nutzt EUR-COT invertiert: starker EUR-Long = eher bearish DAX
-// FTSE nutzt GBP-COT invertiert: starker GBP-Long = eher bearish FTSE
+// === TOTAL SCORE – proxy inversion for DAX/FTSE ===
+// DAX uses EUR COT inverted: strong EUR longs = rather bearish DAX
+// FTSE uses GBP COT inverted: strong GBP longs = rather bearish FTSE
 rawScore = mmPosScore + mmChgScore + rtPosScore + rtChgScore + cmPosScore + cmChgScore
 biasScore = proxyInvert ? -rawScore : rawScore
-// Bias Stufen
+// bias tiers
 strongBull = biasScore >= 5
 normalBull = biasScore >= 3 and biasScore < 5
 weakBull   = biasScore >= 1 and biasScore < 3
@@ -543,9 +541,9 @@ strongBear = biasScore <= -5
 normalBear = biasScore <= -3 and biasScore > -5
 weakBear   = biasScore <= -1 and biasScore > -3
 // ============================================================
-//  v7.2: HINTERGRUND – Datenwoche vs Projektion
-//  Datenwoche (COT-Daten frisch aktualisiert): gruen/rot
-//  Projektion (Folgewoche, forward-filled): grau + transparenter
+//  BACKGROUND – data week vs projection
+//  data week (COT data freshly updated): green/red
+//  projection (following week, forward-filled): gray + more transparent
 // ============================================================
 var float _prevCotSum = na
 var bool _cotFresh = false
@@ -568,7 +566,7 @@ cotBg = hasCOT and not na(mmLong) ? (strongBull ? color.new(_bgG, bgAlpha - 7 + 
      weakBear ? color.new(_bgR, bgAlpha + 3 + _pAdd) : na) : na
 bgcolor(cotBg)
 // ============================================================
-//  COT TABLE – v7.2: Extreme/Proxy/Projektion Status
+//  COT TABLE – extreme/proxy/projection status
 // ============================================================
 if showCOT and showCOTtbl and barstate.islast
     var table ct = table.new(position.bottom_right, 4, 5, border_width = 1)
@@ -580,12 +578,12 @@ if showCOT and showCOTtbl and barstate.islast
     table.cell(ct, 2, 0, 'Δ week', text_color = color.white, bgcolor = hd, text_size = size.small)
     table.cell(ct, 3, 0, 'Signal', text_color = color.white, bgcolor = hd, text_size = size.small)
     if not hasCOT or na(mmLong)
-        table.cell(ct, 0, 1, 'Keine COT', text_color = color.orange, bgcolor = bg, text_size = size.small)
-        table.cell(ct, 1, 1, cfCode == '' ? 'Kein CFTC' : 'N/A', text_color = color.gray, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 0, 1, 'No COT data', text_color = color.orange, bgcolor = bg, text_size = size.small)
+        table.cell(ct, 1, 1, cfCode == '' ? 'No CFTC code' : 'N/A', text_color = color.gray, bgcolor = bg, text_size = size.small)
         table.cell(ct, 2, 1, '', bgcolor = bg, text_size = size.small)
         table.cell(ct, 3, 1, '', bgcolor = bg, text_size = size.small)
     else
-        // v7.2: MM-Zeile zeigt Extreme-Status
+        // the MM row shows the extreme status
         mmDir = mmPct < 5 ? '(< 5%)' : mmChg > 0 ? '→ LONG' : mmChg < 0 ? '→ SHORT' : '→ FLAT'
         mmDirC = mmPct < 5 ? color.gray : mmChg > 0 ? color.lime : mmChg < 0 ? color.red : color.gray
         _mmLabel = mmExtreme ? 'LgSpec ⚠' : mmCrowded ? 'LgSpec △' : 'LgSpec'
@@ -607,15 +605,15 @@ if showCOT and showCOTtbl and barstate.islast
         cmSigC = cmPct < 5 ? color.gray : cmChg > 0 ? color.red : cmChg < 0 ? color.lime : color.gray
         table.cell(ct, 2, 3, (cmChg > 0 ? '+' : '') + str.tostring(cmChg, '#,###'), text_color = cmChg > 0 ? color.lime : color.red, bgcolor = bg, text_size = size.small)
         table.cell(ct, 3, 3, cmSig, text_color = cmSigC, bgcolor = bg, text_size = size.small)
-        // v7.2: BIAS-Zeile mit Extreme/Proxy/Projektion-Info
+        // BIAS row with extreme/proxy/projection info
         biasTxt = strongBull ? 'STRONG LONG' : strongBear ? 'STRONG SHORT' : normalBull ? 'LONG' : normalBear ? 'SHORT' : weakBull ? 'weak long' : weakBear ? 'weak short' : 'NEUTRAL'
         biasClr = strongBull or normalBull or weakBull ? color.lime : strongBear or normalBear or weakBear ? color.red : color.gray
-        // Extreme ueberschreibt Bias-Farbe
+        // extreme overrides the bias color
         _biasClr = mmExtreme ? color.yellow : biasClr
         scoreTxt = str.tostring(biasScore)
-        // Status-Zelle: Extreme + Projektion
-        _status = mmExtreme ? 'EXTREM' : mmCrowded ? 'CROWDED' : ''
-        _status := _status + (_isProj ? (_status != '' ? ' ' : '') + '(Proj)' : ' (Akt)')
+        // status cell: extreme + projection
+        _status = mmExtreme ? 'EXTREME' : mmCrowded ? 'CROWDED' : ''
+        _status := _status + (_isProj ? (_status != '' ? ' ' : '') + '(Proj)' : ' (Live)')
         _statusC = mmExtreme ? color.yellow : mmCrowded ? color.orange : _isProj ? color.gray : color.white
         table.cell(ct, 0, 4, proxyInvert ? 'BIAS*' : 'BIAS', text_color = color.white, bgcolor = hd, text_size = size.small)
         table.cell(ct, 1, 4, biasTxt, text_color = _biasClr, bgcolor = hd, text_size = size.small)
@@ -655,10 +653,10 @@ if showRetestAlerts and tPWLR
 if tfmAlertOnArm and tTFMArm
     alert(syminfo.ticker + ' – TFM setup ARMED (Fri H < Thu H). Target: Fri L = ' + str.tostring(tfmFriL), alert.freq_once_per_bar)
 if tTFMBreak
-    alert(syminfo.ticker + ' – ▼ TFM Target ERREICHT (Fri L gebrochen) @ ' + str.tostring(close), alert.freq_once_per_bar)
-alertcondition(anyBrk, title = 'ALLE Breaks', message = '{{ticker}} – Break @ {{close}}')
-alertcondition(anyRet, title = 'ALLE Retests', message = '{{ticker}} – Retest @ {{close}}')
+    alert(syminfo.ticker + ' – ▼ TFM target HIT (Fri L broken) @ ' + str.tostring(close), alert.freq_once_per_bar)
+alertcondition(anyBrk, title = 'All breaks', message = '{{ticker}} – Break @ {{close}}')
+alertcondition(anyRet, title = 'All retests', message = '{{ticker}} – Retest @ {{close}}')
 alertcondition(anyBrk or anyRet, title = 'All signals', message = '{{ticker}} – Signal @ {{close}}')
 alertcondition(tTFMArm,   title = 'TFM Setup ARMED',  message = '{{ticker}} – TFM armed (Fri H < Thu H) @ {{close}}')
-alertcondition(tTFMBreak, title = 'TFM Target HIT',   message = '{{ticker}} – TFM Fri L erreicht @ {{close}}')
-alertcondition(anyTFM,    title = 'TFM (alle)',       message = '{{ticker}} – TFM Signal @ {{close}}')
+alertcondition(tTFMBreak, title = 'TFM Target HIT',   message = '{{ticker}} – TFM Fri L hit @ {{close}}')
+alertcondition(anyTFM,    title = 'TFM (all)',        message = '{{ticker}} – TFM signal @ {{close}}')

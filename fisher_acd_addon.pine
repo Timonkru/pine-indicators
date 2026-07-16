@@ -1,43 +1,43 @@
 ﻿//@version=6
-indicator('Fisher ACD + Pivot-Range Add-on v3', overlay = true, max_lines_count = 80, max_boxes_count = 30, max_labels_count = 20)
+indicator('Opening Range ACD + Pivot Ranges — Label-Free', shorttitle = 'OR ACD + PR', overlay = true, max_lines_count = 80, max_boxes_count = 30, max_labels_count = 20)
 
 // =============================================================================
-// FISHER ACD + PIVOT-RANGE ADD-ON - LABEL-FREE
-// Mark B. Fisher "The Logical Trader" (2002)
+// OPENING RANGE ACD + PIVOT RANGES — LABEL-FREE
+// Based on Mark B. Fisher, "The Logical Trader" (2002)
 //
-// Konzept: alle Signale visuell ueber Farbe + Linien-Staerke + Box-Faerbung.
-// Keine Text-Labels. Der Trader liest das Setup an Farben und Geometrie.
+// Concept: every signal is expressed through color + line weight + box shading.
+// No text labels — the trader reads the setup from colors and geometry.
 //
-// VISUELLE SPRACHE:
+// VISUAL LANGUAGE:
 //
-//   PIVOT-RANGE BOX (Tages-Bias)
-//     blau-grau   = NEUTRAL (Open in PR)
-//     gruen       = BULLISH (Open ueber PR)        -> heute nur Long
-//     rot         = BEARISH (Open unter PR)        -> heute nur Short
-//     hell-gruen  = TRIPLE-BULL (Open ueber Daily+3D+7D PR) -> Premium-Long
-//     hell-rot    = TRIPLE-BEAR (Open unter allen 3 PRs)    -> Premium-Short
+//   PIVOT-RANGE BOX (daily bias)
+//     blue-gray    = NEUTRAL (open inside PR)
+//     green        = BULLISH (open above PR)        -> longs only today
+//     red          = BEARISH (open below PR)        -> shorts only today
+//     bright green = TRIPLE BULL (open above daily+3D+7D PR) -> premium long
+//     bright red   = TRIPLE BEAR (open below all 3 PRs)      -> premium short
 //
-//   A/C-LINIEN (Entry/Failure)
-//     gruene Linie oben      = A-Up Trigger (Long-Entry)
-//     rote Linie unten       = A-Down Trigger (Short-Entry)
-//     gestrichelt aussen     = C-Failure-Levels
+//   A/C LINES (entry/failure)
+//     green line above       = A-up trigger (long entry)
+//     red line below         = A-down trigger (short entry)
+//     dashed outer lines     = C failure levels
 //
-//     duenn (width 1)        = A noch nicht confirmed
-//     dick (width 4)         = A CONFIRMED -> Trade aktiv
-//     grau                   = A invalide nach C-Failure
+//     thin (width 1)         = A not yet confirmed
+//     thick (width 4)        = A CONFIRMED -> trade active
+//     gray                   = A invalid after C failure
 //
-//   HINTERGRUND
-//     gelb-leicht            = PR Compression (heute kleiner als 3D-PR -> Expansion)
-//     gruener Wash am Open   = Triple-Bull-Open
-//     roter Wash am Open     = Triple-Bear-Open
+//   BACKGROUND
+//     light yellow           = PR compression (today smaller than 3D PR -> expansion)
+//     green wash at the open = triple-bull open
+//     red wash at the open   = triple-bear open
 //
-//   ANWENDUNG:
-//     1) Box gruen ODER hell-gruen  -> nur Long-Trades
-//     2) Box rot ODER hell-rot      -> nur Short-Trades
-//     3) Box blau-grau              -> nur kleine/keine Positionen
-//     4) Linie wird DICK            -> Entry-Signal
-//     5) Linie wird GRAU            -> Exit-Signal (Setup ungueltig)
-//     6) Gelber Hintergrund         -> erwarte Vola-Expansion (groesserer Move)
+//   HOW TO READ IT:
+//     1) box green OR bright green  -> long trades only
+//     2) box red OR bright red      -> short trades only
+//     3) box blue-gray              -> small or no positions
+//     4) line turns THICK           -> entry signal
+//     5) line turns GRAY            -> exit signal (setup invalid)
+//     6) yellow background          -> expect a volatility expansion (larger move)
 // =============================================================================
 
 // ===== Settings: Pivot Ranges =====
@@ -57,7 +57,7 @@ manualMarket  = input.string('EU (DAX/FTSE/CAC)', 'Manual market mode',
 // ===== Settings: ACD =====
 showACD       = input.bool(true,  'Show ACD A/C lines', group = 'ACD entry system')
 orMinutes     = input.int(30, 'Opening range duration (min)', minval = 5, maxval = 60, step = 5, group = 'ACD entry system')
-// Custom-Zeit nur wenn manuell + Custom-Mode
+// Custom time only used with manual + custom mode
 customOrOpenHour = input.int(9,  'Custom cash-open hour (local)',  minval = 0, maxval = 23, group = 'ACD entry system',
                               tooltip = 'Only used with manual + custom mode')
 customOrOpenMin  = input.int(0,  'Custom cash-open minute',           minval = 0, maxval = 59, group = 'ACD entry system')
@@ -98,15 +98,15 @@ clrInvalid   = input.color(color.new(color.gray,   40), 'Invalid (after C failur
 
 // =============================================================================
 // MARKET AUTO-DETECTION
-// Liefert: (tz_string, openHour_local, openMin_local, marketLabel)
+// Returns: (tz_string, openHour_local, openMin_local, marketLabel)
 // =============================================================================
 f_detectMarket() =>
-    // Pruefe alle Identifier-Felder (ticker, name, prefix), nicht nur ticker
+    // check all identifier fields (ticker, name, prefix), not just the ticker
     s1 = str.lower(syminfo.ticker)
     s2 = str.lower(syminfo.prefix)
     s3 = str.lower(syminfo.description)
     s  = s1 + " " + s2 + " " + s3
-    // US Indizes - viele Varianten
+    // US indices - many symbol variants
     isNQ   = str.contains(s, "nq")    or str.contains(s, "ndx")   or str.contains(s, "qqq") or
              str.contains(s, "nas")   or str.contains(s, "nasdaq")or str.contains(s, "us100")or
              str.contains(s, "ustec") or str.contains(s, "ustech")or str.contains(s, "tech100")
@@ -168,9 +168,9 @@ f_manualMarket() =>
 else
     f_manualMarket()
 
-// DEBUG: zeigt Symbol-Info + erkannten Markt einmal am letzten Bar
+// DEBUG: shows symbol info + detected market once on the last bar
 showMarketDebug = input.bool(false, 'Show symbol debug label', group = 'Debug',
-                              tooltip = 'Zeigt ticker/prefix/description + erkannten Markt-Mode an. Hilft beim Pruefen ob Auto-Detect funktioniert.')
+                              tooltip = 'Shows ticker/prefix/description + detected market mode. Helps verify the auto-detection.')
 if showMarketDebug and barstate.islast
     debugTxt = "TICKER: " + syminfo.ticker + "\nPREFIX: " + syminfo.prefix +
                "\nDESC: " + syminfo.description +
@@ -203,16 +203,16 @@ f_pivot_range(h, l, c) =>
 
 // =============================================================================
 // OR + STRETCH
-// SMA explizit auf Daily-TF berechnen (nicht auf Chart-TF!)
+// compute the SMA explicitly on the daily TF (not on the chart TF!)
 // =============================================================================
 f_dayStretch(o, h, l) => math.min(math.abs(o - l), math.abs(h - o))
 
-// Auf Daily-TF: Stretch der letzten N Tage + ihre SMA
+// On the daily TF: stretch of the last N days + its SMA
 autoStretchRaw = request.security(syminfo.tickerid, 'D',
     ta.sma(f_dayStretch(open[1], high[1], low[1]), stretchLookback),
     lookahead = barmerge.lookahead_on)
 
-// Daily HLC fuer Debug-Info / Anzeige
+// daily HLC for debug info / display
 [dOpen, dHigh2, dLow2] = request.security(syminfo.tickerid, 'D',
     [open[1], high[1], low[1]], lookahead = barmerge.lookahead_on)
 dayStretchVal = f_dayStretch(dOpen, dHigh2, dLow2)
@@ -240,7 +240,7 @@ if not inORWindow and not orDone and not na(orHigh)
     orRange := orHigh - orLow
     orDone  := true
 
-// DEBUG: ORB-Box explizit zeichnen
+// DEBUG: draw the ORB box explicitly
 var box debugORBBox = na
 var int orStartBar = na
 if isCashOpenBar
@@ -278,7 +278,7 @@ prLineColor = tripleBullish ? color.new(color.lime, 0) :
               color.new(color.blue, 0)
 
 // =============================================================================
-// PIVOT-RANGE PLOTS (mit Bias-Faerbung)
+// PIVOT-RANGE PLOTS (with bias coloring)
 // =============================================================================
 prShow = showDailyPR and (showPROnlyToday ? hour(time, tz) >= orOpenHour and hour(time, tz) <= 17 : true)
 
@@ -301,14 +301,14 @@ plot(show7dPR ? pRH7 : na, '7-Day PR High',  color = color.new(color.purple, 50)
 plot(show7dPR ? pRL7 : na, '7-Day PR Low',   color = color.new(color.purple, 50), linewidth = 1, style = plot.style_cross)
 
 // =============================================================================
-// A/C LEVELS (Linien-Variante mit dynamischer Faerbung/Staerke)
+// A/C LEVELS (line variant with dynamic color/weight)
 // =============================================================================
 aUp = orDone and not na(orHigh) ? orHigh + stretchUsed : na
 aDn = orDone and not na(orLow)  ? orLow  - stretchUsed : na
 cUp = orDone and not na(orHigh) ? orHigh + cMult * stretchUsed : na
 cDn = orDone and not na(orLow)  ? orLow  - cMult * stretchUsed : na
 
-// Confirmation Logic (Fisher-konform: nur first triggered side)
+// Confirmation logic (per Fisher: only the first triggered side counts)
 var int barsAboveA = 0
 var int barsBelowA = 0
 var bool aUpConfirmed = false
@@ -332,14 +332,14 @@ else
 aUpConfirmed := aUpConfirmed or (barsAboveA >= confirmBars and not na(aUp) and not aDnConfirmed)
 aDnConfirmed := aDnConfirmed or (barsBelowA >= confirmBars and not na(aDn) and not aUpConfirmed)
 
-// C-Failure: nach Confirmation gegenueberliegendes C gekreuzt
+// C failure: opposite C level crossed after confirmation
 cFailLong  = aUpConfirmed and not na(cDn) and close < cDn
 cFailShort = aDnConfirmed and not na(cUp) and close > cUp
 
-// Dynamische Farbe / Width fuer A-Linien
-// dÃ¼nn (1)   = noch nicht confirmed
-// dick (4)   = confirmed = Trade aktiv
-// grau       = invalide nach C-Failure
+// dynamic color / width for the A lines
+// thin (1)  = not yet confirmed
+// thick (4) = confirmed = trade active
+// gray      = invalid after C failure
 aUpLineColor = cFailLong  ? clrInvalid : clrAUp
 aDnLineColor = cFailShort ? clrInvalid : clrADn
 cUpLineColor = cFailShort ? clrInvalid : clrCUp
@@ -348,7 +348,7 @@ cDnLineColor = cFailLong  ? clrInvalid : clrCDn
 aUpLineWidth = aUpConfirmed and not cFailLong  ? 4 : 1
 aDnLineWidth = aDnConfirmed and not cFailShort ? 4 : 1
 
-// Linien pro Session zeichnen (nicht extend.right!)
+// draw the lines per session (no extend.right!)
 var line lnAUp = na, var line lnADn = na, var line lnCUp = na, var line lnCDn = na
 
 orJustDone = orDone and not orDone[1]
@@ -378,7 +378,7 @@ if showACD and not na(lnCDn)
 prCompressed = dPRH <= pRH3 and dPRL >= pRL3
 bgcolor(showCompressionBg and prCompressed ? color.new(color.yellow, 92) : na, title = 'PR Compression')
 
-// Triple-Confluence als zarter Hintergrund-Wash (erste paar Bars nach Open)
+// triple confluence as a subtle background wash (first few bars after the open)
 sessionBarsSinceOpen = isCashOpenBar ? 0 : isCashOpenBar[1] ? 1 : nz(ta.barssince(isCashOpenBar))
 washWindow = sessionBarsSinceOpen <= 3
 bgcolor(showTripleBg and washWindow and tripleBullish ? color.new(color.lime, 90) : na, title = 'Triple Bull Wash')

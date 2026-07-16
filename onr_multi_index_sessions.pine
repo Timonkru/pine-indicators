@@ -1,7 +1,7 @@
 //@version=6
-indicator("ONR Multi-Index + Sessions", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
-// === ZEITZONE & ZEITUMSTELLUNG ===
-// Auto-Erkennung der DST-Luecke zwischen EU und US
+indicator("Overnight Range & Sessions — Multi-Index", shorttitle="ONR Sessions", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+// === TIMEZONE & DAYLIGHT SAVING ===
+// auto-detection of the DST gap between EU and US
 dstMode = input.string('Auto', 'DST mode', options=['Auto', 'Manual'], group='Time settings', tooltip='Auto = detects the US/EU DST shift automatically from the Berlin-NY time difference')
 manualEUDST = input.bool(true, 'EU summer time (CET->CEST)', group='Time settings', tooltip='Manual mode only: is the EU currently on summer time?')
 manualUSDST = input.bool(true, 'US summer time (EST->EDT)', group='Time settings', tooltip='Manual mode only: is the US currently on summer time?')
@@ -31,7 +31,7 @@ showSessLabels   = input.bool(true, "Session Labels", group="Session boxes")
 tz = input.string("Europe/Berlin", "Timezone", group="Display")
 
 // === AUTO DST-ERKENNUNG ===
-// Berlin-NY Differenz: 6h=beide gleich, 5h=US Sommer/EU Winter(-1), 7h=EU Sommer/US Winter(+1)
+// Berlin-NY difference: 6h=both equal, 5h=US summer/EU winter(-1), 7h=EU summer/US winter(+1)
 f_autoUSDSTShift() =>
     berlinH = hour(time, "Europe/Berlin")
     nyH     = hour(time, "America/New_York")
@@ -40,11 +40,11 @@ f_autoUSDSTShift() =>
 
 f_manualUSDSTShift() =>
     if manualUSDST and not manualEUDST
-        -1   // US Sommer, EU Winter → US-Zeiten 1h frueher
+        -1   // US summer, EU winter -> US times 1h earlier
     else if not manualUSDST and manualEUDST
-        1    // EU Sommer, US Winter → US-Zeiten 1h spaeter
+        1    // EU summer, US winter -> US times 1h later
     else
-        0    // beide gleich → kein Shift
+        0    // both equal -> no shift
 
 usDSTShift = dstMode == 'Auto' ? f_autoUSDSTShift() : f_manualUSDSTShift()
 f_usHour(h) => int((h + usDSTShift + 24) % 24)
@@ -99,7 +99,7 @@ detectIndex() =>
     else
         "DAX"
 selectedIndex = manualOverride ? manualPreset : detectIndex()
-// === PRÜFEN OB FRAGMENTIERT SINNVOLL ===
+// === CHECK WHETHER FRAGMENTED MODE MAKES SENSE ===
 isFragmentedType = selectedIndex == "Forex" or selectedIndex == "Gold" or selectedIndex == "Silver" or selectedIndex == "Copper"
 useFragmentedSessions = useFragmented and isFragmentedType
 // === STANDARD SESSION SETUP ===
@@ -320,23 +320,23 @@ if endAsia and not na(asLeft) and not na(asH) and not na(asL)
         label.delete(array.shift(asLabels))
     asH := na, asL := na, asLeft := na
 // ============================================================
-//  GAP-REFERENZ: VORTAGES-CASH-CLOSE (PDC)
-//  Der Schlusskurs der Cash-Session als Linie in den Folgetag —
-//  Referenzlevel fuer Gap-Up/-Down und Gap-Fill (Fill = Touch der Linie).
+//  GAP REFERENCE: PREVIOUS DAY CASH CLOSE (PDC)
+//  The cash-session close drawn as a line into the following day —
+//  reference level for gap-up/-down and gap fill (fill = touch of the line).
 // ============================================================
 showPrevClose = input.bool(true, "Show previous day close (gap reference)", group="Gap reference")
 pdcColor      = input.color(color.new(color.white, 25), "PDC color", group="Gap reference")
 pdcWidth      = input.int(1, "PDC line width", 1, 3, group="Gap reference")
 showPdcLabel  = input.bool(true, "PDC label", group="Gap reference")
 
-// Cash-Session je Index-Typ (unabhaengig von den Session-Box-Toggles):
-// US-Typen -> US-Cash-Ende, sonst EU-Cash-Ende (DAX/FTSE-Standard)
+// cash session per index type (independent of the session-box toggles):
+// US types -> US cash end, otherwise EU cash end (DAX/FTSE standard)
 pdcUseUS   = selectedIndex == "US" or selectedIndex == "Russell" or selectedIndex == "Oil"
 pdcSession = pdcUseUS ? usSessionTime : euSessionTime
 
-// Erfassung TIMEFRAME-UNABHAENGIG auf fester 15m-Aufloesung via security —
-// auf dem Chart-TF versagt die Session-Erkennung bei H1+ (Kerzen enden nicht
-// am Cash-Close) und auf H4/Daily komplett ("nicht ueberall zu sehen").
+// capture TIMEFRAME-INDEPENDENTLY on a fixed 15m resolution via security —
+// on the chart TF the session detection fails on H1+ (candles do not end at
+// the cash close) and breaks completely on H4/daily.
 f_pdcCapture() =>
     inS  = not na(time(timeframe.period, pdcSession, tz))
     endS = not inS and inS[1]
@@ -349,15 +349,15 @@ f_pdcCapture() =>
 
 [pdcVal, pdcTime] = request.security(syminfo.tickerid, "15", f_pdcCapture(), lookahead=barmerge.lookahead_off)
 
-// PLOT statt Linien-Objekten: zeichnet auf JEDER historischen Bar — waehrend
-// Tag D liegt automatisch der Close von Tag D-1 als Level im Chart (auch
-// rueckwirkend ueber die gesamte Historie, fuer Gap-Fill-Review).
-// Beim Tageswechsel wird die Linie per na unterbrochen (kein Treppen-Sprung).
+// PLOT instead of line objects: draws on EVERY historical bar — during day D
+// the close of day D-1 automatically sits in the chart as a level (also
+// retroactively across the whole history, for gap-fill review).
+// At the day change the line is broken via na (no staircase jump).
 pdcJump = not na(pdcVal[1]) and pdcVal != pdcVal[1]
 pdcPlotVal = showPrevClose ? (pdcJump ? na : pdcVal) : na
 plot(pdcPlotVal, "PDC (previous day cash close)", color=pdcColor, linewidth=pdcWidth, style=plot.style_linebr)
 
-// Ein kleines Label je Tageswechsel (abschaltbar)
+// one small label per day change (can be disabled)
 var array<label> pdcLabels = array.new<label>()
 if showPrevClose and showPdcLabel and pdcJump
     pdcLbl = label.new(time, pdcVal, "PDC " + str.tostring(pdcVal, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.black, 100), textcolor=pdcColor, size=size.tiny)

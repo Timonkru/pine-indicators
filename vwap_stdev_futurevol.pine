@@ -4,7 +4,7 @@
 // futures contract (request.security). Price = CFD (hlc3), weight = futures
 // volume -> the basis offset solves itself (the VWAP uses the CFD price).
 // Anchor: session / week / month. Bands at 1/2/3 sigma.
-indicator("VWAP + StdDev Bands (Futures Volume)", overlay = true)
+indicator("Futures Volume VWAP + Bands — CFD Charts", shorttitle = "Fut Vol VWAP", overlay = true)
 
 anchorIn = input.string("Session (day)", "Anchor",
      options = ["Session (day)", "Week", "Month"], group = "VWAP")

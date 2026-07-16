@@ -7,7 +7,7 @@
 // Anchor: session (day) / week / month — the profile resets per period.
 // Incremental map accumulation (no lookback loop -> month anchor works too).
 // Output: histogram + POC (red) + VAH/VAL (blue). Thick = HVN, thin = LVN.
-indicator("Futures Volume Profile (CFD)", overlay = true,
+indicator("Futures Volume Profile — CFD Charts", shorttitle = "Fut Vol Profile", overlay = true,
      max_boxes_count = 250, max_lines_count = 15, max_labels_count = 12)
 
 anchorIn = input.string("Session (day)", "Anchor",

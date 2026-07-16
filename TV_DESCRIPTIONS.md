@@ -2,8 +2,12 @@
 
 Regeln beachtet: EN zuerst, Konzept+Originalität+Nutzung, KEINE Links/Brands,
 Clean Chart (frisches Layout, NUR das jeweilige Skript!). Titel ohne
-[KruegerAlgorithms]. **Status 16.07.: ALLE 6 Skripte UI-komplett EN** (inkl.
-der im Code verglichenen Options-Strings). Gamma-Template (gamma-seed) bleibt
+[KruegerAlgorithms]. **Status 16.07. (2. Pass): ALLE 6 Skripte komplett EN —
+UI-Inputs, Tooltips, Labels, Tabellen, Alert-Texte, Alert-Titel UND
+Code-Kommentare** (der 1. Pass hatte Reste: dt. Tooltips, „Kasse"-Titel im
+indicator(), © KasseATB-Zeile, dt. Alert-Meldungen — alles behoben, per Grep
+verifiziert). indicator()-Titel = Publikationstitel. Jede Beschreibung hat
+jetzt „What makes it original" + „How to use it". Gamma-Template bleibt
 bewusst deutsch/privat — statische Tageswerte sind ohnehin nicht publizierbar
 (Originality/Usefulness-Regel); falls es publiziert war: NICHT neu publizieren.
 
@@ -27,9 +31,10 @@ sich am Stamm; alle sechs an der Em-Dash-Grammatik.
 
 **Beschreibungs-Struktur (immer gleich):**
 1. Ein Satz: was + für wen
-2. „How it works" (Bullets)
-3. „How to use it" (2-3 Sätze)
-4. Einheitlicher Schlusssatz (in JEDE Beschreibung, TV-intern = regelkonform):
+2. „What makes it original" (Moderator-Pflichtpunkt!)
+3. „How it works" (Bullets)
+4. „How to use it" (Absatz)
+5. Einheitlicher Schlusssatz (in JEDE Beschreibung, TV-intern = regelkonform):
 
 > *This script is part of a consistent set of open-source session, range and
 > volume tools — the companions are on my profile.*
@@ -49,6 +54,12 @@ CFD charts only show broker tick volume, which does not represent real market
 participation. This indicator pulls REAL exchange volume from the matching
 futures contract and builds a volume profile directly on your CFD chart.
 
+What makes it original: standard volume-profile tools weight by the chart's
+own (tick) volume. This one maps futures contract volume into CFD price
+coordinates (price = CFD, weight = futures), accumulates the profile
+incrementally so month anchors work without lookback limits, and can anchor
+the session to the futures trading day instead of CFD broker midnight.
+
 How it works:
 - The futures contract is auto-detected from the chart symbol (DAX/GER40 ->
   FDAX, NAS100 -> NQ, US30 -> YM, UK100 -> Z, US500 -> ES), or set manually.
@@ -66,8 +77,12 @@ How it works:
   nothing — mixing tick volume with contract volume would distort the profile.
   The source label warns you when no futures data is available.
 
-Usage: treat POC/VAH/VAL as the real participation levels behind your CFD
-chart. Zone width is ATR-derived by default or fixed in points.
+How to use it: treat POC/VAH/VAL as the real participation levels behind your
+CFD chart — acceptance above the value area supports continuation, a rejection
+back inside favors rotation toward the POC. Thick zones (HVN) act as magnets
+and consolidation areas, thin zones (LVN) tend to be traversed quickly, which
+makes them useful stop and target references. Zone width is ATR-derived by
+default or fixed in points.
 
 ---
 
@@ -81,6 +96,12 @@ A session/week/month-anchored VWAP with 1/2/3-sigma bands — with a twist for
 CFD traders: the VWAP weighting can use REAL futures exchange volume instead
 of broker tick volume.
 
+What makes it original: this is not another VWAP variant — the weighting
+source is the auto-detected futures contract while the price stays the CFD's,
+bars without futures data are excluded instead of silently falling back to
+tick volume, and the daily anchor can follow the futures trading day so the
+VWAP matches across CFD and native futures charts.
+
 How it works:
 - Price source is this chart's CFD price (hlc3 by default); the weight is the
   volume of the auto-detected futures contract (request.security). Because
@@ -93,8 +114,12 @@ How it works:
 - Bars without futures data do not enter the sums; a status label always
   shows which volume source is active.
 
-Usage: standard VWAP playbook (mean reversion toward VWAP, band extremes as
-stretch zones) — but weighted by real market participation.
+How to use it: the standard VWAP playbook applies — price above a rising VWAP
+supports longs, reversion trades target the VWAP, and the 2/3-sigma bands mark
+statistically stretched zones where momentum entries have poor expectancy. The
+difference is that these levels are weighted by real market participation, so
+they match what futures traders see instead of broker tick noise. Check the
+status label once after loading to confirm the futures feed is active.
 
 ---
 
@@ -109,6 +134,12 @@ combined with daily/3-day/7-day pivot ranges — deliberately label-free: every
 signal is expressed through color, line weight and box shading, so the chart
 stays readable.
 
+What makes it original: it combines the ACD entry framework with Fisher's
+pivot-range bias in one visual system (most public ACD scripts stop at the
+A/C levels), auto-derives the stretch from recent opening ranges instead of
+requiring a hand-tuned constant, and auto-detects cash open + timezone per
+market.
+
 How it works:
 - A-up/A-down entry levels are projected from the opening range plus a
   "stretch" (auto-derived from recent opening ranges and capped, or fixed);
@@ -121,7 +152,16 @@ How it works:
   with a manual override, so the opening range starts at the real cash open.
 - Optional compression background when today's pivot range is unusually
   narrow (expansion expected).
-Alerts for confirmed A-levels, C-failures and pivot-range crosses.
+
+How to use it: wait for the opening range to complete, then treat a confirmed
+A-up/A-down (the line thickens) as the intraday bias trigger in that
+direction; a C-failure (line turns gray) cancels or flips the bias. Alignment
+matters more than any single level — an A-up confirmation while the open is
+above a bullish pivot range, ideally with "triple" confluence, is the
+highest-quality condition, while signals against the pivot bias deserve
+smaller size. The compression background flags days where a range expansion
+is more likely than usual. Alerts cover confirmed A-levels, C-failures and
+pivot-range crosses.
 
 ## 4) Overnight Range & Sessions — Multi-Index
 
@@ -133,6 +173,13 @@ Draws the overnight range (ONR) of the instrument's own overnight session —
 not a generic fixed window — plus EU/US/Asia session boxes and the previous
 day's cash close as a gap reference.
 
+What makes it original: generic session tools apply one fixed overnight
+window to everything. This one carries per-instrument overnight definitions
+(indices, metals, oil, forex), supports fragmented quiet-phase sessions for
+24h markets, detects US/EU DST shifts automatically from the Berlin-New York
+time difference, and captures the cash close timeframe-independently so the
+gap reference works on any chart resolution.
+
 How it works:
 - The overnight window is auto-selected per instrument (DAX, FTSE, US indices,
   Russell, gold, silver, copper, oil, Nikkei, HK, forex) with a manual
@@ -143,7 +190,14 @@ How it works:
   Berlin-New York time difference (manual override available).
 - An info table shows the detected index, session window and mode; the
   previous day cash close is drawn as a line for gap-up/gap-down context.
-Use the ONR high/low as the breakout frame for the cash session.
+
+How to use it: before the cash open, read the overnight high/low as the first
+breakout frame of the day — a cash-session break out of the ONR sets the
+directional tone, while repeated rejections at the ONR edges frame fade
+setups back into the range. Combine with the previous cash close line for gap
+context (open above both ONR high and prior close is a very different day
+than an open inside the range), and use the session boxes to see which region
+built the current move.
 
 ## 5) Session Candle Levels & Alerts — Intraday
 
@@ -166,7 +220,20 @@ How it works:
 - Breakouts can require volume above a configurable multiple of the average
   ("volume-confirmed") before a signal counts; retest labels/alerts optional.
 - US/EU DST shifts are handled automatically.
-All levels come with alert conditions, so the chart can stay closed.
+
+What makes it original: this is not a generic session-open marker — it encodes
+a specific, curated set of reference candles (2nd/7th 15-min, 1st/4th 5-min,
+8 Ball/Teenager) with the orderly-range outlier filter and volume confirmation
+built in, plus automatic US/EU DST alignment so the levels stay correct across
+the March/November transition weeks.
+
+How to use it: pick your market (EU or US index, gold, forex, HK50 or JPN225),
+enable only the reference candles you actually trade, and set alerts on their
+highs/lows — the script is built so the chart can stay closed until an alert
+fires. A volume-confirmed break of a reference level signals real
+participation behind the move; the optional retest labels/alerts catch the
+second entry back at the level. On FOMC/NFP days the event mode replaces the
+standard references with post-release reference candles.
 
 ## 6) Session Candle Levels & Alerts — Weekly Swing
 
@@ -188,11 +255,26 @@ How it works:
 - Optional COT panel (CFTC Commitment of Traders via TradingView's COT
   library): managed-money and retail net positioning with weekly change,
   auto-mapped from the chart symbol.
-Designed for daily/4h charts; all signals available as alert conditions.
+
+What makes it original: the COT layer goes beyond plotting net positions — it
+percentile-ranks managed money against ~2 years of history and flips it
+contrarian at extremes (crowded trades), and it maps DAX/FTSE to EUR/GBP COT
+data with an inverted score, since there is no direct COT series for those
+indices.
+
+How to use it: on a daily or 4h chart, watch how price behaves at the
+Monday/Wednesday and previous week/month extremes — a volume-confirmed close
+beyond a level signals continuation, a rejection signals range rotation. The
+Thu-Fri-Mon pattern arms automatically at the Monday open and alerts when
+Friday's low is hit. Use the COT background/table as a weekly positioning
+filter for swing direction, not as an entry trigger.
 
 ## Merkzettel Neu-Publikation
 1. Frisches Chart-Layout, NUR das eine Skript, Standard-Farben, keine anderen
    Indikatoren/Zeichnungen.
-2. Titel exakt wie oben (keine Versionsnummern noetig, kein Brand).
-3. Beschreibung aus diesem Dokument, EN zuerst (DE darf optional darunter).
-4. Release Notes kuenftig ebenfalls EN.
+2. Code aus dem Repo frisch in den Pine-Editor kopieren und als NEUES Skript
+   speichern — der Skriptname im Editor wird der Publikationstitel-Vorschlag,
+   die indicator()-Titel sind bereits exakt die Zieltitel.
+3. Titel exakt wie oben (keine Versionsnummern noetig, kein Brand).
+4. Beschreibung aus diesem Dokument, EN zuerst (DE darf optional darunter).
+5. Release Notes kuenftig ebenfalls EN.
