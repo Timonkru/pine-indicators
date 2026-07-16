@@ -1,20 +1,19 @@
 //@version=6
-// VWAP + STD-DEV-BÄNDER — mit optionaler FUTURE-Volumen-Quelle
-// Läuft auf dem CFD-Chart, kann aber das echte Volumen vom Future ziehen
-// (request.security). Preis = CFD (hlc3), Gewichtung = Future-Volumen -> die
-// Basis-Verschiebung ist automatisch erledigt (VWAP nutzt den CFD-Preis).
-// Anker: Session/Woche/Monat. Bänder 1/2/3 Sigma.
-// Dient AUCH als Test: Wenn "Future-Symbol" korrekt zieht, geht auch das Profil.
-indicator("VWAP + StdDev (Future-Vol)", overlay = true)
+// VWAP + STANDARD-DEVIATION BANDS — with an optional FUTURES volume source
+// Runs on a CFD chart but can pull REAL exchange volume from the matching
+// futures contract (request.security). Price = CFD (hlc3), weight = futures
+// volume -> the basis offset solves itself (the VWAP uses the CFD price).
+// Anchor: session / week / month. Bands at 1/2/3 sigma.
+indicator("VWAP + StdDev Bands (Futures Volume)", overlay = true)
 
-anchorIn = input.string("Session (Tag)", "Anker",
-     options = ["Session (Tag)", "Woche", "Monat"], group = "VWAP")
-srcIn    = input.source(hlc3, "Preis-Quelle", group = "VWAP")
-volMode  = input.string("Chart (CFD)", "Volumen-Quelle",
-     options = ["Chart (CFD)", "Future-Symbol"], group = "Volumen",
-     tooltip = "Future = echtes Börsenvolumen via request.security. Preis bleibt der CFD-Preis dieses Charts.")
-autoFut  = input.bool(true, "Future-Symbol AUTO erkennen", group = "Volumen")
-futMan   = input.symbol("EUREX:FDAX1!", "…sonst manuell", group = "Volumen")
+anchorIn = input.string("Session (day)", "Anchor",
+     options = ["Session (day)", "Week", "Month"], group = "VWAP")
+srcIn    = input.source(hlc3, "Price source", group = "VWAP")
+volMode  = input.string("Chart (CFD)", "Volume source",
+     options = ["Chart (CFD)", "Futures symbol"], group = "Volume",
+     tooltip = "Futures = real exchange volume via request.security. The price stays this chart's CFD price.")
+autoFut  = input.bool(true, "Auto-detect futures symbol", group = "Volume")
+futMan   = input.symbol("EUREX:FDAX1!", "…manual otherwise", group = "Volume")
 
 f_detectFut() =>
     s = str.lower(syminfo.ticker) + " " + str.lower(syminfo.prefix) + " " + str.lower(syminfo.description)
@@ -28,27 +27,27 @@ f_detectFut() =>
 
 futSym   = autoFut ? f_detectFut() : futMan
 
-showBands = input.bool(true,  "Std-Dev-Bänder zeigen", group = "Bänder")
-m1 = input.float(1.0, "Band 1 (σ)", step = 0.5, group = "Bänder")
-m2 = input.float(2.0, "Band 2 (σ)", step = 0.5, group = "Bänder")
-m3 = input.float(3.0, "Band 3 (σ)", step = 0.5, group = "Bänder")
+showBands = input.bool(true,  "Show std-dev bands", group = "Bands")
+m1 = input.float(1.0, "Band 1 (sigma)", step = 0.5, group = "Bands")
+m2 = input.float(2.0, "Band 2 (sigma)", step = 0.5, group = "Bands")
+m3 = input.float(3.0, "Band 3 (sigma)", step = 0.5, group = "Bands")
 
-// --- Future-Volumen holen ---
-// FIX 2026-07-13: KEIN stiller Fallback auf Chart-Volumen mehr. CFD-Tick-Volumen
-// und Future-Kontrakte sind verschiedene Einheiten — der Mix hat die Nacht-Bars
-// des 24h-CFD mit Fantasie-Gewichten geflutet (Divergenz DAX-CFD vs FDAX-Chart).
-// Bars ohne Future-Daten zaehlen jetzt einfach nicht (nz(vol)=0 in der Summe).
+// --- fetch futures volume ---
+// NO silent fallback to chart volume: CFD tick volume and futures contracts
+// are different units — mixing them floods the overnight bars of a 24h CFD
+// with meaningless weights (divergence vs. the native futures chart).
+// Bars without futures data simply do not count (nz(vol) = 0 in the sums).
 futVol = request.security(futSym, timeframe.period, volume, ignore_invalid_symbol = true)
-useFut = volMode == "Future-Symbol"
+useFut = volMode == "Futures symbol"
 vol    = useFut ? futVol : volume
 
-// --- Anker-Reset ---
-// FIX 2026-07-13: Optionaler Future-Handelstag-Anker — timeframe.change("D")
-// feuert auf dem CFD zur Broker-Mitternacht, auf dem Future zum Session-Start
-// -> verschiedene Akkumulations-Fenster = zweite Divergenz-Quelle.
-futDayAnk = input.bool(true, "Tages-Anker = Future-Handelstag", group = "VWAP",
-     tooltip = "Reset am Tageswechsel des FUTURE statt des Chart-Symbols. Damit ist der VWAP auf CFD- und Future-Chart identisch verankert.")
-res  = anchorIn == "Woche" ? "W" : anchorIn == "Monat" ? "M" : "D"
+// --- anchor reset ---
+// Optional futures-trading-day anchor: timeframe.change("D") fires at the
+// CFD broker's midnight but at the session start on the futures chart ->
+// different accumulation windows on the two chart types.
+futDayAnk = input.bool(true, "Daily anchor = futures trading day", group = "VWAP",
+     tooltip = "Resets at the FUTURES day change instead of the chart symbol's midnight, so the VWAP is anchored identically on CFD and futures charts.")
+res  = anchorIn == "Week" ? "W" : anchorIn == "Month" ? "M" : "D"
 futDayT = request.security(futSym, "D", time, ignore_invalid_symbol = true)
 futDayChg = nz(ta.change(futDayT)) != 0
 newP = res == "D" and futDayAnk and useFut ? futDayChg : timeframe.change(res)
@@ -91,9 +90,9 @@ fill(pu1, pl1, color = color.new(color.orange, 92))
 fill(pu2, pu1, color = color.new(color.blue, 94))
 fill(pl1, pl2, color = color.new(color.blue, 94))
 
-// --- Status-Label: bestaetigt welche Volumen-Quelle aktiv ist ---
+// --- status label: confirms which volume source is active ---
 if barstate.islast
-    txt = (useFut ? "Future-Vol: " + futSym + (na(futVol) ? " (KEINE DATEN - Bars ohne Future-Vol zaehlen NICHT)" : " ✓")
-                  : "Chart-Vol (CFD)")
+    txt = (useFut ? "Futures volume: " + futSym + (na(futVol) ? " (NO DATA - bars without futures volume do NOT count)" : " ✓")
+                  : "Chart volume (CFD)")
     label.new(bar_index, vwap, txt, style = label.style_label_left,
          color = color.new(color.black, 20), textcolor = color.white, size = size.small)
