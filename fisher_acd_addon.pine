@@ -1,8 +1,8 @@
-//@version=6
+﻿//@version=6
 indicator('Fisher ACD + Pivot-Range Add-on v3', overlay = true, max_lines_count = 80, max_boxes_count = 30, max_labels_count = 20)
 
 // =============================================================================
-// FISHER ACD + PIVOT-RANGE ADD-ON  v3 — LABEL-FREI
+// FISHER ACD + PIVOT-RANGE ADD-ON - LABEL-FREE
 // Mark B. Fisher "The Logical Trader" (2002)
 //
 // Konzept: alle Signale visuell ueber Farbe + Linien-Staerke + Box-Faerbung.
@@ -41,60 +41,60 @@ indicator('Fisher ACD + Pivot-Range Add-on v3', overlay = true, max_lines_count 
 // =============================================================================
 
 // ===== Settings: Pivot Ranges =====
-showDailyPR     = input.bool(true,  'Daily Pivot-Range zeigen',   group = 'Pivot-Ranges')
-show3dPR        = input.bool(false, '3-Day Pivot-Range zeigen',   group = 'Pivot-Ranges')
-show7dPR        = input.bool(false, '7-Day Pivot-Range zeigen',   group = 'Pivot-Ranges')
-showPROnlyToday = input.bool(true,  'Daily PR nur fuer heute zeigen', group = 'Pivot-Ranges')
-prLineWidth     = input.int(2, 'Linien-Breite', minval = 1, maxval = 4, group = 'Pivot-Ranges')
+showDailyPR     = input.bool(true,  'Show daily pivot range',   group = 'Pivot ranges')
+show3dPR        = input.bool(false, 'Show 3-day pivot range',   group = 'Pivot ranges')
+show7dPR        = input.bool(false, 'Show 7-day pivot range',   group = 'Pivot ranges')
+showPROnlyToday = input.bool(true,  'Show daily PR for today only', group = 'Pivot ranges')
+prLineWidth     = input.int(2, 'Line width', minval = 1, maxval = 4, group = 'Pivot ranges')
 
 // ===== Settings: Market Auto-Detection =====
-autoMarket    = input.bool(true,  'Auto-Detect (DAX/ES/Nikkei/...)', group = 'Market & Session',
-                            tooltip = 'Erkennt Symbol automatisch und stellt Cash-Open + Timezone passend ein. AUS = manuelle Settings unten.')
-manualMarket  = input.string('EU (DAX/FTSE/CAC)', 'Manueller Markt-Mode',
-                              options = ['EU (DAX/FTSE/CAC)', 'US (ES/NQ/YM/RTY)', 'UK (FTSE only)', 'Asia (Nikkei)', 'Asia (HSI)', 'Custom (eigene Zeit)'],
-                              group = 'Market & Session', tooltip = 'Nur wirksam wenn Auto-Detect AUS')
+autoMarket    = input.bool(true,  'Auto-detect (DAX/ES/Nikkei/...)', group = 'Market & Session',
+                            tooltip = 'Detects the symbol automatically and sets cash open + timezone accordingly. OFF = manual settings below.')
+manualMarket  = input.string('EU (DAX/FTSE/CAC)', 'Manual market mode',
+                              options = ['EU (DAX/FTSE/CAC)', 'US (ES/NQ/YM/RTY)', 'UK (FTSE only)', 'Asia (Nikkei)', 'Asia (HSI)', 'Custom (own time)'],
+                              group = 'Market & Session', tooltip = 'Only used when auto-detect is OFF')
 
 // ===== Settings: ACD =====
-showACD       = input.bool(true,  'ACD A/C Linien zeigen', group = 'ACD Entry-System')
-orMinutes     = input.int(30, 'Opening-Range Dauer (Min)', minval = 5, maxval = 60, step = 5, group = 'ACD Entry-System')
+showACD       = input.bool(true,  'Show ACD A/C lines', group = 'ACD entry system')
+orMinutes     = input.int(30, 'Opening range duration (min)', minval = 5, maxval = 60, step = 5, group = 'ACD entry system')
 // Custom-Zeit nur wenn manuell + Custom-Mode
-customOrOpenHour = input.int(9,  'Custom Cash-Open Stunde (lokal)',  minval = 0, maxval = 23, group = 'ACD Entry-System',
-                              tooltip = 'Nur wirksam bei Manuell + Custom-Mode')
-customOrOpenMin  = input.int(0,  'Custom Cash-Open Minute',           minval = 0, maxval = 59, group = 'ACD Entry-System')
-customTz         = input.string('Europe/Berlin', 'Custom Timezone',   group = 'ACD Entry-System',
-                                 tooltip = 'z.B. Europe/Berlin, America/New_York, Asia/Tokyo')
+customOrOpenHour = input.int(9,  'Custom cash-open hour (local)',  minval = 0, maxval = 23, group = 'ACD entry system',
+                              tooltip = 'Only used with manual + custom mode')
+customOrOpenMin  = input.int(0,  'Custom cash-open minute',           minval = 0, maxval = 59, group = 'ACD entry system')
+customTz         = input.string('Europe/Berlin', 'Custom timezone',   group = 'ACD entry system',
+                                 tooltip = 'e.g. Europe/Berlin, America/New_York, Asia/Tokyo')
 
-stretchMode     = input.string('Auto (Fisher, gecappt)', 'Stretch-Berechnung',
-                                options = ['Auto (Fisher, gecappt)', 'Pct of ORB', 'Fixed Pts'], group = 'ACD Entry-System')
-stretchCapPct   = input.float(0.30, 'Stretch-Cap (max % der ORB-Range)', minval = 0.05, maxval = 1.0, step = 0.05, group = 'ACD Entry-System')
-stretchPctORB   = input.float(0.16, 'Stretch = X * ORB-Range (Pct-Mode)', minval = 0.05, maxval = 0.50, step = 0.01, group = 'ACD Entry-System')
-stretchPts      = input.float(2.0,  'Stretch in Punkten (Fixed-Mode)',    minval = 0.1, group = 'ACD Entry-System')
-stretchLookback = input.int(10, 'Auto-Stretch Lookback (Tage)', minval = 5, maxval = 30, group = 'ACD Entry-System')
+stretchMode     = input.string('Auto (Fisher, capped)', 'Stretch calculation',
+                                options = ['Auto (Fisher, capped)', 'Pct of ORB', 'Fixed Pts'], group = 'ACD entry system')
+stretchCapPct   = input.float(0.30, 'Stretch cap (max % of ORB range)', minval = 0.05, maxval = 1.0, step = 0.05, group = 'ACD entry system')
+stretchPctORB   = input.float(0.16, 'Stretch = X * ORB range (pct mode)', minval = 0.05, maxval = 0.50, step = 0.01, group = 'ACD entry system')
+stretchPts      = input.float(2.0,  'Stretch in points (fixed mode)',    minval = 0.1, group = 'ACD entry system')
+stretchLookback = input.int(10, 'Auto-stretch lookback (days)', minval = 5, maxval = 30, group = 'ACD entry system')
 
-cMult         = input.float(2.5, 'C-Point = X * Stretch (Failure)', minval = 1.5, maxval = 5.0, step = 0.1, group = 'ACD Entry-System')
-confirmBars   = input.int(2, 'Confirmed-A: # Bars halten',          minval = 0, maxval = 10, group = 'ACD Entry-System')
+cMult         = input.float(2.5, 'C point = X * stretch (failure)', minval = 1.5, maxval = 5.0, step = 0.1, group = 'ACD entry system')
+confirmBars   = input.int(2, 'Confirmed A: bars to hold',          minval = 0, maxval = 10, group = 'ACD entry system')
 
 // ===== Settings: Bias =====
-showBiasInBox     = input.bool(true,  'Bias durch Box-Farbe', group = 'Bias-Visualisierung')
-showCompressionBg = input.bool(false, 'PR Compression Hintergrund (gelb)', group = 'Bias-Visualisierung')
-showTripleBg      = input.bool(false, 'Triple-Confluence als Hintergrund-Wash', group = 'Bias-Visualisierung')
+showBiasInBox     = input.bool(true,  'Bias via box color', group = 'Bias visualization')
+showCompressionBg = input.bool(false, 'PR compression background (yellow)', group = 'Bias visualization')
+showTripleBg      = input.bool(false, 'Triple confluence as background wash', group = 'Bias visualization')
 
 // ===== DEBUG =====
-showORBBox        = input.bool(false, 'ORB-Range Box hervorheben (Debug)', group = 'Debug', tooltip = 'Zeigt explizit welche Kerzen die ORB bilden')
+showORBBox        = input.bool(false, 'Highlight ORB range box (debug)', group = 'Debug', tooltip = 'Shows explicitly which candles form the ORB')
 orbBoxColor       = input.color(color.new(color.yellow, 80), 'ORB Debug Box', group = 'Debug')
 
 // Farbschema (alles zentral)
-clrNeutral   = input.color(color.new(color.blue,   80), 'PR Neutral (Open in PR)',   group = 'Farben')
-clrBullish   = input.color(color.new(color.green,  82), 'PR Bullish (Open > PR)',    group = 'Farben')
-clrBearish   = input.color(color.new(color.red,    82), 'PR Bearish (Open < PR)',    group = 'Farben')
-clrTripleBull= input.color(color.new(color.lime,   75), 'PR Triple-Bull',            group = 'Farben')
-clrTripleBear= input.color(color.new(color.maroon, 75), 'PR Triple-Bear',            group = 'Farben')
+clrNeutral   = input.color(color.new(color.blue,   80), 'PR Neutral (Open in PR)',   group = 'Colors')
+clrBullish   = input.color(color.new(color.green,  82), 'PR Bullish (Open > PR)',    group = 'Colors')
+clrBearish   = input.color(color.new(color.red,    82), 'PR Bearish (Open < PR)',    group = 'Colors')
+clrTripleBull= input.color(color.new(color.lime,   75), 'PR Triple-Bull',            group = 'Colors')
+clrTripleBear= input.color(color.new(color.maroon, 75), 'PR Triple-Bear',            group = 'Colors')
 
-clrAUp       = input.color(color.new(color.green,  0),  'A-Up (Long-Trigger)',  group = 'Farben')
-clrADn       = input.color(color.new(color.red,    0),  'A-Down (Short-Trigger)', group = 'Farben')
-clrCUp       = input.color(color.new(color.lime,   40), 'C-Up (Long-Failure)',  group = 'Farben')
-clrCDn       = input.color(color.new(color.maroon, 40), 'C-Down (Short-Failure)', group = 'Farben')
-clrInvalid   = input.color(color.new(color.gray,   40), 'Ungueltig (nach C-Failure)', group = 'Farben')
+clrAUp       = input.color(color.new(color.green,  0),  'A-Up (Long-Trigger)',  group = 'Colors')
+clrADn       = input.color(color.new(color.red,    0),  'A-Down (Short-Trigger)', group = 'Colors')
+clrCUp       = input.color(color.new(color.lime,   40), 'C-Up (Long-Failure)',  group = 'Colors')
+clrCDn       = input.color(color.new(color.maroon, 40), 'C-Down (Short-Failure)', group = 'Colors')
+clrInvalid   = input.color(color.new(color.gray,   40), 'Invalid (after C failure)', group = 'Colors')
 
 // =============================================================================
 // MARKET AUTO-DETECTION
@@ -158,7 +158,7 @@ f_manualMarket() =>
         ["Asia/Tokyo", 9, 0, "Japan"]
     else if manualMarket == 'Asia (HSI)'
         ["Asia/Hong_Kong", 9, 30, "HK"]
-    else if manualMarket == 'Custom (eigene Zeit)'
+    else if manualMarket == 'Custom (own time)'
         [customTz, customOrOpenHour, customOrOpenMin, "Custom"]
     else
         ["Europe/Berlin", 9, 0, "EU"]
@@ -169,7 +169,7 @@ else
     f_manualMarket()
 
 // DEBUG: zeigt Symbol-Info + erkannten Markt einmal am letzten Bar
-showMarketDebug = input.bool(false, 'Symbol-Debug Label zeigen', group = 'Debug',
+showMarketDebug = input.bool(false, 'Show symbol debug label', group = 'Debug',
                               tooltip = 'Zeigt ticker/prefix/description + erkannten Markt-Mode an. Hilft beim Pruefen ob Auto-Detect funktioniert.')
 if showMarketDebug and barstate.islast
     debugTxt = "TICKER: " + syminfo.ticker + "\nPREFIX: " + syminfo.prefix +
@@ -337,7 +337,7 @@ cFailLong  = aUpConfirmed and not na(cDn) and close < cDn
 cFailShort = aDnConfirmed and not na(cUp) and close > cUp
 
 // Dynamische Farbe / Width fuer A-Linien
-// dünn (1)   = noch nicht confirmed
+// dÃ¼nn (1)   = noch nicht confirmed
 // dick (4)   = confirmed = Trade aktiv
 // grau       = invalide nach C-Failure
 aUpLineColor = cFailLong  ? clrInvalid : clrAUp
@@ -391,9 +391,9 @@ firstAUpConf = aUpConfirmed and not aUpConfirmed[1]
 firstADnConf = aDnConfirmed and not aDnConfirmed[1]
 
 if firstAUpConf
-    alert(syminfo.ticker + ' - A↑ CONFIRMED (Fisher ACD LONG) @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' - A-UP CONFIRMED (Fisher ACD LONG) @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
 if firstADnConf
-    alert(syminfo.ticker + ' - A↓ CONFIRMED (Fisher ACD SHORT) @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' - A-DOWN CONFIRMED (Fisher ACD SHORT) @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
 if cFailLong and not cFailLong[1]
     alert(syminfo.ticker + ' - C-FAILURE (Long invalid) @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
 if cFailShort and not cFailShort[1]
@@ -407,14 +407,14 @@ if crossPRLdn
     alert(syminfo.ticker + ' - Daily PR-Low CROSS DOWN @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
 
 if tripleBullish and isCashOpenBar
-    alert(syminfo.ticker + ' - ▲▲▲ TRIPLE BULL OPEN @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' - TRIPLE BULL OPEN @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
 if tripleBearish and isCashOpenBar
-    alert(syminfo.ticker + ' - ▼▼▼ TRIPLE BEAR OPEN @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' - TRIPLE BEAR OPEN @ ' + str.tostring(close, '#.##'), alert.freq_once_per_bar)
 if prCompressed and isCashOpenBar
-    alert(syminfo.ticker + ' - ⚡ PR COMPRESSION → Expansion erwartet', alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' - PR COMPRESSION -> expansion expected', alert.freq_once_per_bar)
 
-alertcondition(firstAUpConf, title = 'Fisher A↑ Confirmed',   message = '{{ticker}} - Fisher A↑ Confirmed @ {{close}}')
-alertcondition(firstADnConf, title = 'Fisher A↓ Confirmed',   message = '{{ticker}} - Fisher A↓ Confirmed @ {{close}}')
+alertcondition(firstAUpConf, title = 'Fisher A-Up Confirmed',   message = '{{ticker}} - Fisher A-Up Confirmed @ {{close}}')
+alertcondition(firstADnConf, title = 'Fisher A-Down Confirmed',   message = '{{ticker}} - Fisher A-Down Confirmed @ {{close}}')
 alertcondition(cFailLong,    title = 'Fisher C-Failure Long', message = '{{ticker}} - C-Failure (Long invalid) @ {{close}}')
 alertcondition(cFailShort,   title = 'Fisher C-Failure Short',message = '{{ticker}} - C-Failure (Short invalid) @ {{close}}')
 alertcondition(crossPRHup,   title = 'Daily PR-High Cross Up',message = '{{ticker}} - Daily PR-High Cross Up @ {{close}}')

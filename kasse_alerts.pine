@@ -4,105 +4,105 @@ indicator('Kasse Alerts', overlay = true, max_lines_count = 30, max_boxes_count 
 // ============================================================
 //  🎛️ DISPLAY MASTER
 // ============================================================
-showLabels    = input.bool(true,  '🏷️ Alle Labels anzeigen (Master)', group = '🎛️ Display', tooltip = 'Globaler Schalter: deaktiviert alle Label-Annotationen im Chart (Volumen %, Retests, Outlier-Warnungen, Event-Signale etc.). Linien/Boxen/Alerts bleiben aktiv.')
+showLabels    = input.bool(true,  '🏷️ Show all labels (master)', group = '🎛️ Display', tooltip = 'Globaler Schalter: deaktiviert alle Label-Annotationen im Chart (Volumen %, Retests, Outlier-Warnungen, Event-Signale etc.). Linien/Boxen/Alerts bleiben aktiv.')
 
 // Helper: Labels werden nur erzeugt wenn Master aktiv
 lbl(x, y, txt, color, textcolor, style, size) =>
     showLabels ? label.new(x = x, y = y, text = txt, color = color, textcolor = textcolor, style = style, size = size) : na
 
 // === EINSTELLUNGEN 15-MIN ===
-showEU       = input.bool(true,  'EU Märkte aktiv',           group = '📊 15-Min Candles (EU/US)')
-showUS       = input.bool(true,  'US Märkte & Gold aktiv',    group = '📊 15-Min Candles (EU/US)')
+showEU       = input.bool(true,  'EU markets active',           group = '📊 15-Min Candles (EU/US)')
+showUS       = input.bool(true,  'US markets & gold active',    group = '📊 15-Min Candles (EU/US)')
 showEU_2nd15 = input.bool(true,  'EU 2. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
 showEU_7th15 = input.bool(true,  'EU 7. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
 showUS_2nd15 = input.bool(true,  'US 2. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
 showUS_7th15 = input.bool(true,  'US 7. Candle (15m)',        group = '📊 15-Min Candles (EU/US)')
-euColor      = input.color(color.blue,   'EU Farbe',          group = '📊 15-Min Candles (EU/US)')
-usColor      = input.color(color.orange, 'US/Gold Farbe',     group = '📊 15-Min Candles (EU/US)')
-lineWidth    = input.int(2, 'Linienbreite', minval = 1, maxval = 5, group = '📊 15-Min Candles (EU/US)')
+euColor      = input.color(color.blue,   'EU color',          group = '📊 15-Min Candles (EU/US)')
+usColor      = input.color(color.orange, 'US/gold color',     group = '📊 15-Min Candles (EU/US)')
+lineWidth    = input.int(2, 'Line width', minval = 1, maxval = 5, group = '📊 15-Min Candles (EU/US)')
 
 // === EINSTELLUNGEN HK50 ===
-showHK50     = input.bool(true,  'HK50 aktiv',                group = '🌏 HK50 Spezial')
+showHK50     = input.bool(true,  'HK50 active',                group = '🌏 HK50 Spezial')
 showHK_230   = input.bool(true,  'HK50 02:30 Candle (15m)',   group = '🌏 HK50 Spezial')
-hkColor      = input.color(color.purple, 'HK50 Farbe',        group = '🌏 HK50 Spezial')
+hkColor      = input.color(color.purple, 'HK50 color',        group = '🌏 HK50 Spezial')
 
 // === EINSTELLUNGEN JPN225 ===
-showJPN      = input.bool(true,  'JPN225 aktiv',              group = '🗾 JPN225 Spezial')
+showJPN      = input.bool(true,  'JPN225 active',              group = '🗾 JPN225 Spezial')
 showJPN_050  = input.bool(true,  'JPN225 00:50 Candle (10m)', group = '🗾 JPN225 Spezial')
-jpnColor     = input.color(color.teal,   'JPN225 Farbe',      group = '🗾 JPN225 Spezial')
+jpnColor     = input.color(color.teal,   'JPN225 color',      group = '🗾 JPN225 Spezial')
 
 // === EINSTELLUNGEN GOLD SESSION CANDLES ===
-showGoldSession = input.bool(true, 'Gold Session Candles aktiv', group = '🥇 Gold/Commodities Sessions')
-showGold_0145   = input.bool(true, 'Gold 01:45 (nach NY-Asia)', group = '🥇 Gold/Commodities Sessions', tooltip = 'Nach NY-Asia ruhige Phase, Shanghai wacht auf')
-showGold_1415   = input.bool(true, 'Gold 14:15 (nach EU-Lunch)', group = '🥇 Gold/Commodities Sessions', tooltip = 'Nach EU-Lunch, vor US Open')
-goldSessionColor = input.color(color.orange, 'Gold Session Farbe', group = '🥇 Gold/Commodities Sessions')
+showGoldSession = input.bool(true, 'Gold session candles active', group = '🥇 Gold/Commodities Sessions')
+showGold_0145   = input.bool(true, 'Gold 01:45 (after NY-Asia)', group = '🥇 Gold/Commodities Sessions', tooltip = 'Nach NY-Asia ruhige Phase, Shanghai wacht auf')
+showGold_1415   = input.bool(true, 'Gold 14:15 (after EU lunch)', group = '🥇 Gold/Commodities Sessions', tooltip = 'Nach EU-Lunch, vor US Open')
+goldSessionColor = input.color(color.orange, 'Gold session color', group = '🥇 Gold/Commodities Sessions')
 
 // === EINSTELLUNGEN FOREX SESSION CANDLES ===
-showForexSession = input.bool(true, 'Forex Session Candles aktiv', group = '💱 Forex Sessions')
-showFX_0815      = input.bool(true, 'FX 08:15 (nach Pre-London)', group = '💱 Forex Sessions', tooltip = 'Nach Asia/Pre-London ruhige Phase, London Interbank startet')
-forexSessionColor = input.color(color.purple, 'Forex Session Farbe', group = '💱 Forex Sessions')
+showForexSession = input.bool(true, 'Forex session candles active', group = '💱 Forex Sessions')
+showFX_0815      = input.bool(true, 'FX 08:15 (after pre-London)', group = '💱 Forex Sessions', tooltip = 'Nach Asia/Pre-London ruhige Phase, London Interbank startet')
+forexSessionColor = input.color(color.purple, 'Forex session color', group = '💱 Forex Sessions')
 
 // === EINSTELLUNGEN 5-MIN ===
 show5MinEU   = input.bool(true,  'EU 5-Min Levels',           group = '📈 5-Min Candles (1. & 4.)')
 show5MinUS   = input.bool(true,  'US 5-Min Levels',           group = '📈 5-Min Candles (1. & 4.)')
-showEU1stLow = input.bool(true,  'Zeige EU 1. Candle Low',    group = '📈 5-Min Candles (1. & 4.)')
-showUS1stLow = input.bool(true,  'Zeige US 1. Candle Low',    group = '📈 5-Min Candles (1. & 4.)')
-eu5MinColor  = input.color(color.green, 'EU 5-Min Farbe',     group = '📈 5-Min Candles (1. & 4.)')
-us5MinColor  = input.color(color.red,   'US 5-Min Farbe',     group = '📈 5-Min Candles (1. & 4.)')
+showEU1stLow = input.bool(true,  'Show EU 1st candle low',    group = '📈 5-Min Candles (1. & 4.)')
+showUS1stLow = input.bool(true,  'Show US 1st candle low',    group = '📈 5-Min Candles (1. & 4.)')
+eu5MinColor  = input.color(color.green, 'EU 5-min color',     group = '📈 5-Min Candles (1. & 4.)')
+us5MinColor  = input.color(color.red,   'US 5-min color',     group = '📈 5-Min Candles (1. & 4.)')
 
 // === 8 BALL & TEENAGER (Tom Hougaard) ===
-show8Ball    = input.bool(true,  '8 Ball & Teenager aktiv (Tom Hougaard)',  group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Markiert 8. (8 Ball) und 13. (Teenager) 5-Min Kerze nach Open. Originalstrategie: FTSE/Indizes.')
+show8Ball    = input.bool(true,  '8 Ball & Teenager active (Tom Hougaard)',  group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Marks the 8th (8 Ball) and 13th (Teenager) 5-min candle after the open. Original strategy: FTSE/indices.')
 show8BallEU  = input.bool(true,  'EU 8 Ball  (5-Min Bar 8 → 09:35-09:40)', group = '🎱 8 Ball & Teenager (Hougaard)')
 showTeenEU   = input.bool(true,  'EU Teenager (5-Min Bar 13 → 10:00-10:05)', group = '🎱 8 Ball & Teenager (Hougaard)')
 show8BallUS  = input.bool(true,  'US 8 Ball  (5-Min Bar 8 → 16:05-16:10)', group = '🎱 8 Ball & Teenager (Hougaard)')
 showTeenUS   = input.bool(true,  'US Teenager (5-Min Bar 13 → 16:30-16:35)', group = '🎱 8 Ball & Teenager (Hougaard)')
-orderlyMult  = input.float(1.5, 'Orderly-Filter (max. Range vs. Avg)', minval = 1.0, maxval = 5.0, step = 0.1, group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Tom Hougaards Regel: Bar nur handeln wenn ihre Range maximal diesen Faktor mal dem Durchschnitt der vorherigen Bars beträgt. Outlier-Bars werden übersprungen.')
-ballColor    = input.color(color.fuchsia, '8 Ball Farbe',  group = '🎱 8 Ball & Teenager (Hougaard)')
-teenColor    = input.color(color.aqua,    'Teenager Farbe', group = '🎱 8 Ball & Teenager (Hougaard)')
+orderlyMult  = input.float(1.5, 'Orderly filter (max. range vs. avg)', minval = 1.0, maxval = 5.0, step = 0.1, group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Tom Hougaard rule: only trade the bar if its range is at most this factor times the average of the preceding bars. Outlier bars are skipped.')
+ballColor    = input.color(color.fuchsia, '8 Ball color',  group = '🎱 8 Ball & Teenager (Hougaard)')
+teenColor    = input.color(color.aqua,    'Teenager color', group = '🎱 8 Ball & Teenager (Hougaard)')
 
 // === NEU: PRE-MARKET LEVELS ===
-showPreMarket30 = input.bool(true, 'Zeige 30-Min Low vor Kasse', group = '🌅 Pre-Market Levels')
-showPreMarket10 = input.bool(true, 'Zeige 10-Min High/Low vor Kasse', group = '🌅 Pre-Market Levels')
-showPreMarketLabels = input.bool(true, 'Pre-Market Labels anzeigen', group = '🌅 Pre-Market Levels', tooltip = 'Nur die Text-Labels (Linien/Alerts bleiben aktiv)')
-preMarket30Color = input.color(color.purple, '30-Min Level Farbe', group = '🌅 Pre-Market Levels')
-preMarket10Color = input.color(color.yellow, '10-Min Level Farbe', group = '🌅 Pre-Market Levels')
+showPreMarket30 = input.bool(true, 'Show 30-min low before cash open', group = '🌅 Pre-Market Levels')
+showPreMarket10 = input.bool(true, 'Show 10-min high/low before cash open', group = '🌅 Pre-Market Levels')
+showPreMarketLabels = input.bool(true, 'Show pre-market labels', group = '🌅 Pre-Market Levels', tooltip = 'Text labels only (lines/alerts stay active)')
+preMarket30Color = input.color(color.purple, '30-min level color', group = '🌅 Pre-Market Levels')
+preMarket10Color = input.color(color.yellow, '10-min level color', group = '🌅 Pre-Market Levels')
 
 // === SPEZIAL-EVENTS (FOMC/NFP) - RULE OF 4 + PRESS CONFERENCE ===
-enableSpecialEvent = input.bool(false, 'Event-Modus aktiv', group = '📰 FOMC/NFP Events')
-eventHour = input.int(20, 'News Release Stunde (MEZ)', minval = 0, maxval = 23, group = '📰 FOMC/NFP Events', tooltip = 'FOMC: 20:00 MEZ (14:00 Eastern)')
-eventMinute = input.int(0, 'News Release Minute', minval = 0, maxval = 59, group = '📰 FOMC/NFP Events', tooltip = 'Normalerweise :00 (volle Stunde)')
-showRuleOf4 = input.bool(true, 'Rule of 4 Bar (10-Min)', group = '📰 FOMC/NFP Events', tooltip = 'Die 4. 10-Min Kerze nach News Release (30 Min danach)')
-showPressConf5Min = input.bool(true, 'Press Conference Bar (5-Min)', group = '📰 FOMC/NFP Events', tooltip = 'Die 5-Min Kerze 30 Min nach News Release')
-eventColor = input.color(color.fuchsia, 'Event Level Farbe', group = '📰 FOMC/NFP Events')
-ruleOf4Color = input.color(color.yellow, 'Rule of 4 Farbe', group = '📰 FOMC/NFP Events')
-eventColorLong = input.color(color.green, 'Long Signal Farbe', group = '📰 FOMC/NFP Events')
-eventColorShort = input.color(color.red, 'Short Signal Farbe', group = '📰 FOMC/NFP Events')
+enableSpecialEvent = input.bool(false, 'Event mode active', group = '📰 FOMC/NFP Events')
+eventHour = input.int(20, 'News release hour (CET)', minval = 0, maxval = 23, group = '📰 FOMC/NFP Events', tooltip = 'FOMC: 20:00 MEZ (14:00 Eastern)')
+eventMinute = input.int(0, 'News Release Minute', minval = 0, maxval = 59, group = '📰 FOMC/NFP Events', tooltip = 'Usually :00 (full hour)')
+showRuleOf4 = input.bool(true, 'Rule of 4 Bar (10-Min)', group = '📰 FOMC/NFP Events', tooltip = 'The 4th 10-min candle after the news release (30 min later)')
+showPressConf5Min = input.bool(true, 'Press Conference Bar (5-Min)', group = '📰 FOMC/NFP Events', tooltip = 'The 5-min candle 30 min after the news release')
+eventColor = input.color(color.fuchsia, 'Event level color', group = '📰 FOMC/NFP Events')
+ruleOf4Color = input.color(color.yellow, 'Rule of 4 color', group = '📰 FOMC/NFP Events')
+eventColorLong = input.color(color.green, 'Long signal color', group = '📰 FOMC/NFP Events')
+eventColorShort = input.color(color.red, 'Short signal color', group = '📰 FOMC/NFP Events')
 
 // === VOLUMEN-ANALYSE ===
-showVolEU1st  = input.bool(true, 'EU 1. Candle Volumen',      group = '📉 Volumen-Analyse')
-showVolUS1st  = input.bool(true, 'US 1. Candle Volumen',      group = '📉 Volumen-Analyse')
-showVolEU4th  = input.bool(true, 'EU 4. Candle Durchbrüche',  group = '📉 Volumen-Analyse')
-showVolUS4th  = input.bool(true, 'US 4. Candle Durchbrüche',  group = '📉 Volumen-Analyse')
-showVol15Min  = input.bool(true, '15-Min Durchbrüche',        group = '📉 Volumen-Analyse')
-volThreshold  = input.float(1.5, 'Volumen-Schwellenwert (x Durchschnitt)', minval = 1.0, maxval = 3.0, step = 0.1, group = '📉 Volumen-Analyse')
-volPeriod     = input.int(20, 'Durchschnitts-Periode', minval = 5, maxval = 100, group = '📉 Volumen-Analyse')
+showVolEU1st  = input.bool(true, 'EU 1st candle volume',      group = '📉 Volume analysis')
+showVolUS1st  = input.bool(true, 'US 1st candle volume',      group = '📉 Volume analysis')
+showVolEU4th  = input.bool(true, 'EU 4th candle breakouts',  group = '📉 Volume analysis')
+showVolUS4th  = input.bool(true, 'US 4th candle breakouts',  group = '📉 Volume analysis')
+showVol15Min  = input.bool(true, '15-min breakouts',        group = '📉 Volume analysis')
+volThreshold  = input.float(1.5, 'Volume threshold (x average)', minval = 1.0, maxval = 3.0, step = 0.1, group = '📉 Volume analysis')
+volPeriod     = input.int(20, 'Durchschnitts-Periode', minval = 5, maxval = 100, group = '📉 Volume analysis')
 
 // === DURCHBRUCHS-BESTÄTIGUNG ===
-breakoutMode        = input.string('Volumen-Bestätigt', 'Durchbruchs-Modus', options = ['Sofort', 'Volumen-Bestätigt'], group = '⚡ Durchbruchs-Bestätigung')
-breakoutVolThreshold = input.float(1.0, 'Min. Volumen für Durchbruch (x Durchschnitt)', minval = 0.5, maxval = 2.0, step = 0.1, group = '⚡ Durchbruchs-Bestätigung', tooltip = 'Durchbruch wird nur gezählt wenn Volumen über diesem Wert liegt')
+breakoutMode        = input.string('Volume-confirmed', 'Breakout mode', options = ['Immediate', 'Volume-confirmed'], group = '⚡ Breakout confirmation')
+breakoutVolThreshold = input.float(1.0, 'Min. volume for a breakout (x average)', minval = 0.5, maxval = 2.0, step = 0.1, group = '⚡ Breakout confirmation', tooltip = 'A breakout only counts if volume is above this value')
 
 // === RETEST-EINSTELLUNGEN ===
-showRetestLabels = input.bool(true, 'Retest Labels anzeigen', group = '↩️ Retest-Einstellungen')
-showRetestAlerts = input.bool(true, 'Retest Alerts aktivieren', group = '↩️ Retest-Einstellungen')
-retestLabelColorEU = input.color(color.blue, 'EU Retest Farbe', group = '↩️ Retest-Einstellungen')
-retestLabelColorUS = input.color(color.orange, 'US Retest Farbe', group = '↩️ Retest-Einstellungen')
+showRetestLabels = input.bool(true, 'Show retest labels', group = '↩️ Retest-Einstellungen')
+showRetestAlerts = input.bool(true, 'Enable retest alerts', group = '↩️ Retest-Einstellungen')
+retestLabelColorEU = input.color(color.blue, 'EU retest color', group = '↩️ Retest-Einstellungen')
+retestLabelColorUS = input.color(color.orange, 'US retest color', group = '↩️ Retest-Einstellungen')
 
 // === ZEITZONE & ZEITUMSTELLUNG ===
 // EU-Zeiten (9h, 10h, 8h etc.) brauchen keinen Shift — Europe/Berlin passt automatisch.
 // US-Zeiten (15h, 16h, 17h, 14h in Berliner Zeit) muessen waehrend DST-Luecke verschoben werden.
-dstMode = input.string('Auto', 'DST-Modus', options = ['Auto', 'Manuell'], group = '🕐 Zeitzone & DST', tooltip = 'Auto = erkennt US/EU DST-Verschiebung automatisch anhand der Zeitdifferenz Berlin↔NY')
-manualEUDST = input.bool(true, 'EU Sommerzeit (CET→CEST)', group = '🕐 Zeitzone & DST', tooltip = 'Nur bei Manuell: EU aktuell in Sommerzeit?')
-manualUSDST = input.bool(true, 'US Sommerzeit (EST→EDT)', group = '🕐 Zeitzone & DST', tooltip = 'Nur bei Manuell: US aktuell in Sommerzeit?')
+dstMode = input.string('Auto', 'DST mode', options = ['Auto', 'Manual'], group = '🕐 Timezone & DST', tooltip = 'Auto = detects the US/EU DST shift automatically from the Berlin-NY time difference')
+manualEUDST = input.bool(true, 'EU Sommerzeit (CET→CEST)', group = '🕐 Timezone & DST', tooltip = 'Manual mode only: is the EU currently on summer time?')
+manualUSDST = input.bool(true, 'US Sommerzeit (EST→EDT)', group = '🕐 Timezone & DST', tooltip = 'Manual mode only: is the US currently on summer time?')
 
 tz = 'Europe/Berlin'
 
@@ -150,7 +150,7 @@ getVolLabel(vol, avgVol) =>
     volSymbol = vol > avgVol * volThreshold ? '✓ ' : vol > avgVol ? '⚠ ' : '✗ '
     [volText, volColor, volSymbol, relVol]
 isBreakoutConfirmed(vol, avgVol) =>
-    breakoutMode == 'Sofort' or vol >= avgVol * breakoutVolThreshold
+    breakoutMode == 'Immediate' or vol >= avgVol * breakoutVolThreshold
 
 // === 15-MINUTEN CANDLES ===
 [time15, high15, low15, open15, close15, vol15] = request.security(syminfo.tickerid, '15', [time, high, low, open, close, volume])
@@ -798,7 +798,7 @@ if isEU5_8th_closed and show8Ball and show8BallEU and showEU
     ball_eu_H_lvl := high5[1], ball_eu_L_lvl := low5[1]
     ball_eu_H_brk := false, ball_eu_L_brk := false, ball_eu_ready := true
     if not ball_eu_orderly
-        lbl(bar_index, high5[1], '⚠ EU 8 Ball OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+        lbl(bar_index, high5[1], '⚠ EU 8 Ball OUTLIER (skipped)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
 if show8Ball and show8BallEU and showEU and ball_eu_ready and ball_eu_orderly and not na(ball_eu_H_lvl)
     if high > ball_eu_H_lvl and not ball_eu_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
         ball_eu_H_brk := true, trigger8BallEUHigh := true
@@ -820,7 +820,7 @@ if isEU5_13th_closed and show8Ball and showTeenEU and showEU
     teen_eu_H_lvl := high5[1], teen_eu_L_lvl := low5[1]
     teen_eu_H_brk := false, teen_eu_L_brk := false, teen_eu_ready := true
     if not teen_eu_orderly
-        lbl(bar_index, high5[1], '⚠ EU Teenager OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+        lbl(bar_index, high5[1], '⚠ EU Teenager OUTLIER (skipped)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
 if show8Ball and showTeenEU and showEU and teen_eu_ready and teen_eu_orderly and not na(teen_eu_H_lvl)
     if high > teen_eu_H_lvl and not teen_eu_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
         teen_eu_H_brk := true, triggerTeenEUHigh := true
@@ -842,7 +842,7 @@ if isUS5_8th_closed and show8Ball and show8BallUS and showUS
     ball_us_H_lvl := high5[1], ball_us_L_lvl := low5[1]
     ball_us_H_brk := false, ball_us_L_brk := false, ball_us_ready := true
     if not ball_us_orderly
-        lbl(bar_index, high5[1], '⚠ US 8 Ball OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+        lbl(bar_index, high5[1], '⚠ US 8 Ball OUTLIER (skipped)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
 if show8Ball and show8BallUS and showUS and ball_us_ready and ball_us_orderly and not na(ball_us_H_lvl)
     if high > ball_us_H_lvl and not ball_us_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
         ball_us_H_brk := true, trigger8BallUSHigh := true
@@ -864,7 +864,7 @@ if isUS5_13th_closed and show8Ball and showTeenUS and showUS
     teen_us_H_lvl := high5[1], teen_us_L_lvl := low5[1]
     teen_us_H_brk := false, teen_us_L_brk := false, teen_us_ready := true
     if not teen_us_orderly
-        lbl(bar_index, high5[1], '⚠ US Teenager OUTLIER (übersprungen)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
+        lbl(bar_index, high5[1], '⚠ US Teenager OUTLIER (skipped)', color = color.gray, textcolor = color.white, style = label.style_label_down, size = size.small)
 if show8Ball and showTeenUS and showUS and teen_us_ready and teen_us_orderly and not na(teen_us_H_lvl)
     if high > teen_us_H_lvl and not teen_us_H_brk and isBreakoutConfirmed(volume, currentAvgVol)
         teen_us_H_brk := true, triggerTeenUSHigh := true
@@ -1018,11 +1018,11 @@ if triggerUS10PreHigh
 if triggerUS10PreLow
     alert(syminfo.ticker + ' - US 10min Pre-Market LOW durchbrochen @ ' + str.tostring(close), alert.freq_once_per_bar)
 if triggerRuleOf4Long
-    alert(syminfo.ticker + ' - ▲ Rule of 4 LONG - Close über 4th 10m Bar High @ ' + str.tostring(close), alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' - ▲ Rule of 4 LONG - close above 4th 10m bar high @ ' + str.tostring(close), alert.freq_once_per_bar)
 if triggerRuleOf4Short
     alert(syminfo.ticker + ' - ▼ Rule of 4 SHORT - Close unter 4th 10m Bar Low @ ' + str.tostring(close), alert.freq_once_per_bar)
 if triggerPressConfLong
-    alert(syminfo.ticker + ' - ▲ FOMC LONG - Close über Press Conference High @ ' + str.tostring(close), alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' - ▲ FOMC LONG - close above press conference high @ ' + str.tostring(close), alert.freq_once_per_bar)
 if triggerPressConfShort
     alert(syminfo.ticker + ' - ▼ FOMC SHORT - Close unter Press Conference Low @ ' + str.tostring(close), alert.freq_once_per_bar)
 if triggerGold0145High
@@ -1113,7 +1113,7 @@ alertcondition(triggerUS10PreHigh, title='US 10m Pre HIGH', message='{{ticker}} 
 alertcondition(triggerUS10PreLow, title='US 10m Pre LOW', message='{{ticker}} - US 10m Pre LOW @ {{close}}')
 alertcondition(triggerRuleOf4Long or triggerRuleOf4Short, title='Rule of 4 Signal', message='{{ticker}} - Rule of 4 Signal @ {{close}}')
 alertcondition(triggerPressConfLong or triggerPressConfShort, title='FOMC Signal', message='{{ticker}} - FOMC Signal @ {{close}}')
-alertcondition(triggerRuleOf4Long or triggerRuleOf4Short or triggerPressConfLong or triggerPressConfShort, title='Alle Event Signals', message='{{ticker}} - Event Signal @ {{close}}')
+alertcondition(triggerRuleOf4Long or triggerRuleOf4Short or triggerPressConfLong or triggerPressConfShort, title='All event signals', message='{{ticker}} - Event Signal @ {{close}}')
 alertcondition(anyGoldBreakout, title='Gold Sessions', message='{{ticker}} - Gold Session Level @ {{close}}')
 alertcondition(anyForexBreakout, title='Forex Sessions', message='{{ticker}} - FX Session Level @ {{close}}')
 // --- 8 Ball & Teenager (Tom Hougaard) ---

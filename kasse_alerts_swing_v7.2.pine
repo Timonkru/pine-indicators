@@ -17,33 +17,33 @@ showPrevWeek    = input.bool(true, 'Previous Week H/L', group = 'Levels')
 showWeeklyOpen  = input.bool(true, 'Weekly Open', group = 'Levels')
 showMonthlyOpen = input.bool(true, 'Monthly Open', group = 'Levels')
 showPrevMonth   = input.bool(true, 'Previous Month H/L', group = 'Levels')
-labelLookback   = input.int(2, 'Label Lookback (N letzte je Level)', minval = 1, maxval = 12, group = 'Levels', tooltip = 'Wie viele vergangene Vorkommen jedes Levels (Linie + Label) sichtbar bleiben. 1 = nur das aktuelle, hält den Chart sauber.')
-mondayColor     = input.color(color.blue, 'Monday', group = 'Farben')
-wedColor        = input.color(color.orange, 'Wednesday', group = 'Farben')
-prevWeekColor   = input.color(color.purple, 'Prev Week', group = 'Farben')
-weeklyOpenColor = input.color(color.teal, 'Weekly Open', group = 'Farben')
-monthlyOpenColor = input.color(color.aqua, 'Monthly Open', group = 'Farben')
-prevMonthColor   = input.color(color.fuchsia, 'Prev Month', group = 'Farben')
-tfmColor        = input.color(color.maroon, 'Thu-Fri-Mon', group = 'Farben')
-lineWidth       = input.int(2, 'Linienbreite', minval = 1, maxval = 5, group = 'Farben')
+labelLookback   = input.int(2, 'Label lookback (last N per level)', minval = 1, maxval = 12, group = 'Levels', tooltip = 'How many past occurrences of each level (line + label) stay visible. 1 = current only, keeps the chart clean.')
+mondayColor     = input.color(color.blue, 'Monday', group = 'Colors')
+wedColor        = input.color(color.orange, 'Wednesday', group = 'Colors')
+prevWeekColor   = input.color(color.purple, 'Prev Week', group = 'Colors')
+weeklyOpenColor = input.color(color.teal, 'Weekly Open', group = 'Colors')
+monthlyOpenColor = input.color(color.aqua, 'Monthly Open', group = 'Colors')
+prevMonthColor   = input.color(color.fuchsia, 'Prev Month', group = 'Colors')
+tfmColor        = input.color(color.maroon, 'Thu-Fri-Mon', group = 'Colors')
+lineWidth       = input.int(2, 'Line width', minval = 1, maxval = 5, group = 'Colors')
 // === HOUGAARD PATTERNS ===
-showTFM           = input.bool(true,  'Thu-Fri-Mon Pattern aktiv', group = 'Hougaard Patterns', tooltip = 'Tom Hougaards Setup: Wenn Friday-High < Thursday-High, dann erwarte Mon (oder Di bei Feiertag) Move auf Friday-Low.')
+showTFM           = input.bool(true,  'Thu-Fri-Mon pattern active', group = 'Hougaard Patterns', tooltip = 'Tom Hougaards Setup: Wenn Friday-High < Thursday-High, dann erwarte Mon (oder Di bei Feiertag) Move auf Friday-Low.')
 showTFMLines      = input.bool(true,  'Fri Low (Target) + Fri High (Stop) zeichnen', group = 'Hougaard Patterns')
-showTFMHelpers    = input.bool(true,  'Thu/Fri H/L Linien anzeigen', group = 'Hougaard Patterns')
+showTFMHelpers    = input.bool(true,  'Show Thu/Fri H/L lines', group = 'Hougaard Patterns')
 tfmAlertOnArm     = input.bool(true,  'Alert wenn Setup armiert (Mo Open)', group = 'Hougaard Patterns')
 tfmIncludeTue     = input.bool(true,  'Auch Di einbeziehen (Holiday-Adjustment)', group = 'Hougaard Patterns')
 // === VOLUMEN ===
-showVolLabels  = input.bool(true, 'Volumen bei Breakout', group = 'Volumen')
-volThreshold   = input.float(1.3, 'Vol-Schwelle', minval = 1.0, maxval = 3.0, step = 0.1, group = 'Volumen')
-volPeriod      = input.int(20, 'Vol-Periode', minval = 5, maxval = 100, group = 'Volumen')
-breakoutMode   = input.string('Volumen-Bestätigt', 'Modus', options = ['Sofort', 'Volumen-Bestätigt'], group = 'Volumen')
-breakoutVolMin = input.float(1.0, 'Min. Vol für Break', minval = 0.5, maxval = 2.0, step = 0.1, group = 'Volumen')
+showVolLabels  = input.bool(true, 'Volume at breakout', group = 'Volume')
+volThreshold   = input.float(1.3, 'Vol-Schwelle', minval = 1.0, maxval = 3.0, step = 0.1, group = 'Volume')
+volPeriod      = input.int(20, 'Vol-Periode', minval = 5, maxval = 100, group = 'Volume')
+breakoutMode   = input.string('Volume-confirmed', 'Mode', options = ['Immediate', 'Volume-confirmed'], group = 'Volume')
+breakoutVolMin = input.float(1.0, 'Min. vol for a break', minval = 0.5, maxval = 2.0, step = 0.1, group = 'Volume')
 // === RETEST ===
 showRetestLabels = input.bool(true, 'Retest Labels', group = 'Retest')
 showRetestAlerts = input.bool(true, 'Retest Alerts', group = 'Retest')
 // === COT BIAS ===
 showCOT    = input.bool(true, 'COT Bias Hintergrund', group = 'COT')
-cotMode    = input.string('Auto', 'CFTC Code', options = ['Auto', 'Manuell'], group = 'COT')
+cotMode    = input.string('Auto', 'CFTC Code', options = ['Auto', 'Manual'], group = 'COT')
 manCode    = input.string('', 'CFTC Code (manuell)', group = 'COT', tooltip = '088691=Gold, 099741=EUR, 13874+=SPX, 096742=GBP')
 bgAlpha    = input.int(92, 'COT Transparenz', minval = 80, maxval = 98, group = 'COT')
 showCOTtbl = input.bool(true, 'COT Table', group = 'COT')
@@ -59,7 +59,7 @@ getVolInfo(vol, avgVol) =>
     sym = vol > avgVol * volThreshold ? '✓' : vol > avgVol ? '⚠' : '✗'
     [txt, clr, sym]
 isConfirmed(vol, avgVol) =>
-    breakoutMode == 'Sofort' or vol >= avgVol * breakoutVolMin
+    breakoutMode == 'Immediate' or vol >= avgVol * breakoutVolMin
 // v7.2: Lookback – haelt je Level-Stream nur die letzten N Linien + Labels, loescht den Rest
 drawLvl(lns, lbls, ln, lb, n) =>
     array.push(lns, ln)
@@ -451,7 +451,7 @@ getCFTCCode() =>
     else
         ""
 autoCode = getCFTCCode()
-cfCode = cotMode == 'Manuell' and manCode != '' ? manCode : autoCode
+cfCode = cotMode == 'Manual' and manCode != '' ? manCode : autoCode
 hasCOT = cfCode != '' and showCOT
 proxyInvert = isDAX or isFTSE
 // COT via Library
@@ -577,7 +577,7 @@ if showCOT and showCOTtbl and barstate.islast
     _cotHdr = isDAX ? 'COT [EUR]' : isFTSE ? 'COT [GBP]' : 'COT'
     table.cell(ct, 0, 0, _cotHdr, text_color = color.white, bgcolor = hd, text_size = size.small)
     table.cell(ct, 1, 0, 'Net', text_color = color.white, bgcolor = hd, text_size = size.small)
-    table.cell(ct, 2, 0, 'Δ Woche', text_color = color.white, bgcolor = hd, text_size = size.small)
+    table.cell(ct, 2, 0, 'Δ week', text_color = color.white, bgcolor = hd, text_size = size.small)
     table.cell(ct, 3, 0, 'Signal', text_color = color.white, bgcolor = hd, text_size = size.small)
     if not hasCOT or na(mmLong)
         table.cell(ct, 0, 1, 'Keine COT', text_color = color.orange, bgcolor = bg, text_size = size.small)
@@ -653,12 +653,12 @@ if showRetestAlerts and tPWLR
     alert(syminfo.ticker + ' – PWL Retest @ ' + str.tostring(close), alert.freq_once_per_bar)
 // --- TFM (Hougaard) ---
 if tfmAlertOnArm and tTFMArm
-    alert(syminfo.ticker + ' – TFM Setup ARMED (Fri H < Thu H). Ziel: Fri L = ' + str.tostring(tfmFriL), alert.freq_once_per_bar)
+    alert(syminfo.ticker + ' – TFM setup ARMED (Fri H < Thu H). Target: Fri L = ' + str.tostring(tfmFriL), alert.freq_once_per_bar)
 if tTFMBreak
     alert(syminfo.ticker + ' – ▼ TFM Target ERREICHT (Fri L gebrochen) @ ' + str.tostring(close), alert.freq_once_per_bar)
 alertcondition(anyBrk, title = 'ALLE Breaks', message = '{{ticker}} – Break @ {{close}}')
 alertcondition(anyRet, title = 'ALLE Retests', message = '{{ticker}} – Retest @ {{close}}')
-alertcondition(anyBrk or anyRet, title = 'Alle Signale', message = '{{ticker}} – Signal @ {{close}}')
+alertcondition(anyBrk or anyRet, title = 'All signals', message = '{{ticker}} – Signal @ {{close}}')
 alertcondition(tTFMArm,   title = 'TFM Setup ARMED',  message = '{{ticker}} – TFM armed (Fri H < Thu H) @ {{close}}')
 alertcondition(tTFMBreak, title = 'TFM Target HIT',   message = '{{ticker}} – TFM Fri L erreicht @ {{close}}')
 alertcondition(anyTFM,    title = 'TFM (alle)',       message = '{{ticker}} – TFM Signal @ {{close}}')

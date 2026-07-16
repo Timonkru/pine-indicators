@@ -2,9 +2,10 @@
 
 Regeln beachtet: EN zuerst, Konzept+Originalität+Nutzung, KEINE Links/Brands,
 Clean Chart (frisches Layout, NUR das jeweilige Skript!). Titel ohne
-[KruegerAlgorithms]. Status: 2 von 6 Skripten übersetzt (die beiden Futures-
-Volumen-Tools); Queue: fisher_acd_addon, kasse_alerts, kasse_alerts_swing,
-onr_multi_index_sessions (+ Gamma-Template in gamma-seed/build_seed.py).
+[KruegerAlgorithms]. **Status 16.07.: ALLE 6 Skripte UI-komplett EN** (inkl.
+der im Code verglichenen Options-Strings). Gamma-Template (gamma-seed) bleibt
+bewusst deutsch/privat — statische Tageswerte sind ohnehin nicht publizierbar
+(Originality/Usefulness-Regel); falls es publiziert war: NICHT neu publizieren.
 
 ---
 
@@ -66,6 +67,98 @@ Usage: standard VWAP playbook (mean reversion toward VWAP, band extremes as
 stretch zones) — but weighted by real market participation.
 
 ---
+
+## 3) Fisher ACD + Pivot Range (label-free)
+
+**Titel:** Fisher ACD + Pivot Range (label-free)
+
+**Beschreibung:**
+
+An implementation of Mark B. Fisher's ACD methodology ("The Logical Trader")
+combined with daily/3-day/7-day pivot ranges — deliberately label-free: every
+signal is expressed through color, line weight and box shading, so the chart
+stays readable.
+
+How it works:
+- A-up/A-down entry levels are projected from the opening range plus a
+  "stretch" (auto-derived from recent opening ranges and capped, or fixed);
+  C-levels mark the failure side. Lines thicken once an A-level is confirmed
+  for a configurable number of bars, and turn gray after a C-failure.
+- The pivot-range box colors the daily bias: open above the range = bullish,
+  below = bearish, inside = neutral; alignment of daily, 3-day and 7-day
+  ranges is highlighted as "triple" confluence.
+- Cash open and timezone are auto-detected per market (EU/US/UK/Nikkei/HSI)
+  with a manual override, so the opening range starts at the real cash open.
+- Optional compression background when today's pivot range is unusually
+  narrow (expansion expected).
+Alerts for confirmed A-levels, C-failures and pivot-range crosses.
+
+## 4) ONR Multi-Index + Sessions
+
+**Titel:** Overnight Range Multi-Index + Sessions
+
+**Beschreibung:**
+
+Draws the overnight range (ONR) of the instrument's own overnight session —
+not a generic fixed window — plus EU/US/Asia session boxes and the previous
+day's cash close as a gap reference.
+
+How it works:
+- The overnight window is auto-selected per instrument (DAX, FTSE, US indices,
+  Russell, gold, silver, copper, oil, Nikkei, HK, forex) with a manual
+  override and a custom session input.
+- Commodities/forex can use fragmented sessions: several small quiet-phase
+  boxes instead of one large overnight range.
+- US/EU daylight-saving shifts are detected automatically from the
+  Berlin-New York time difference (manual override available).
+- An info table shows the detected index, session window and mode; the
+  previous day cash close is drawn as a line for gap-up/gap-down context.
+Use the ONR high/low as the breakout frame for the cash session.
+
+## 5) Kasse Alerts (intraday session candles)
+
+**Titel:** Session Candle Levels & Breakout Alerts (intraday)
+
+**Beschreibung:**
+
+Marks the intraday reference candles many index day-traders work with and
+fires volume-confirmed breakout alerts on their highs/lows.
+
+How it works:
+- 15-minute reference candles after the EU and US cash open (2nd and 7th
+  candle) with configurable colors per region.
+- 5-minute references: 1st/4th candle levels, plus the "8 Ball" (8th 5-min
+  candle) and "Teenager" (13th) known from Tom Hougaard's FTSE approach —
+  including an orderly-range filter that skips outlier bars.
+- Pre-market levels (30-min low / 10-min high-low before the cash open),
+  special sessions for gold, forex, HK50 and JPN225, and an optional
+  FOMC/NFP event mode that marks post-release reference candles.
+- Breakouts can require volume above a configurable multiple of the average
+  ("volume-confirmed") before a signal counts; retest labels/alerts optional.
+- US/EU DST shifts are handled automatically.
+All levels come with alert conditions, so the chart can stay closed.
+
+## 6) Kasse Alerts – Swing (weekly levels)
+
+**Titel:** Weekly Swing Levels & Breakout Alerts
+
+**Beschreibung:**
+
+The swing companion to the intraday version: draws the weekly reference
+levels swing traders track and alerts on volume-confirmed breaks.
+
+How it works:
+- Monday/Wednesday high-low, previous week and previous month high-low,
+  weekly and monthly opens — each with a configurable lookback of how many
+  past occurrences stay on the chart.
+- Thu-Fri-Mon pattern: when Friday's high stays below Thursday's high, the
+  setup arms and targets Friday's low the following week (alerted).
+- Breaks can require volume above a configurable multiple of average volume
+  before they count ("volume-confirmed").
+- Optional COT panel (CFTC Commitment of Traders via TradingView's COT
+  library): managed-money and retail net positioning with weekly change,
+  auto-mapped from the chart symbol.
+Designed for daily/4h charts; all signals available as alert conditions.
 
 ## Merkzettel Neu-Publikation
 1. Frisches Chart-Layout, NUR das eine Skript, Standard-Farben, keine anderen
