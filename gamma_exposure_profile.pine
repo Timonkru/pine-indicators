@@ -1,0 +1,293 @@
+//@version=6
+// GAMMA EXPOSURE PROFILE — MANUAL CHAIN INPUT
+// A self-contained dealer-gamma calculator: paste option-chain rows (strike,
+// call OI, put OI, optional IV) into the settings and the script computes
+// Black-Scholes gamma per strike, aggregates signed dealer GEX (calls +,
+// puts -), finds the gamma flip, call/put walls and the expected move, and
+// draws the exposure profile next to price.
+// No external data is fetched (Pine cannot); the chain snapshot is USER INPUT,
+// so the script itself never goes stale — refresh the paste, not the code.
+// Sign convention (an assumption, not a law): dealers long call gamma, short
+// put gamma. All values are model estimates (r = 0, one representative expiry
+// per map), meant as context levels — not trade signals.
+indicator("Gamma Exposure Profile — Manual Chain Input", shorttitle = "GEX Profile", overlay = true,
+     max_boxes_count = 250, max_lines_count = 30, max_labels_count = 20)
+
+// ---------------------------------------------------------------- inputs ---
+grpFmt = "Chain input"
+fmtTip = "First line (header): #spot=24915.5;dte=21.4;mult=5;iv=0.18;date=2026-07-17\n" +
+     "Then one line per strike: strike;callOI;putOI[;iv]\n" +
+     "spot = underlying index/spot price, dte = days to expiry (representative), " +
+     "mult = contract multiplier, iv = fallback implied vol (decimal) for rows without one, " +
+     "date = snapshot date (optional, enables the staleness warning)."
+structTxt = input.text_area("#spot=24900;dte=21;mult=5;iv=0.18\n24000;1200;8300\n24200;900;5100\n24400;1500;4200\n24600;2100;3900\n24800;2600;3000\n25000;5200;2800\n25200;4100;1900\n25400;2600;1200\n25600;6800;900\n25800;1900;600",
+     "Structure chain (e.g. 7-45 DTE)", tooltip = fmtTip, group = grpFmt)
+nearTxt   = input.text_area("", "Near chain (e.g. 0-5 DTE, optional)",
+     tooltip = "Same format. Leave empty to skip the near-dated map.", group = grpFmt)
+
+grpD = "Display"
+showHist   = input.bool(true, "Show GEX histogram", group = grpD)
+profW      = input.int(24, "Histogram width (bars)", minval = 5, group = grpD)
+gap        = input.int(3,  "Gap from price (bars)", minval = 0, group = grpD)
+posCol     = input.color(color.new(color.teal, 35), "Positive GEX", group = grpD)
+negCol     = input.color(color.new(color.red, 35),  "Negative GEX", group = grpD)
+showFlip   = input.bool(true,  "Flip (yellow, thick)", group = grpD)
+showWalls  = input.bool(true,  "Call/put walls (red/green, thick)", group = grpD)
+showWalls2 = input.bool(true,  "2nd walls (dashed)", group = grpD)
+showEM     = input.bool(true,  "Expected move ±1 day (blue, dotted)", group = grpD)
+showNear   = input.bool(true,  "Near-map walls (orange/teal, dotted)", group = grpD)
+showReg    = input.bool(true,  "Regime background", group = grpD)
+neutralPct = input.float(0.3, "Flip zone (± %)", minval = 0.05, step = 0.05, group = grpD)
+offset     = input.float(0.0, "Chart offset (points)", group = grpD,
+     tooltip = "Constant basis offset between your chart (e.g. a CFD) and the option underlying. Added to every level.")
+
+// ------------------------------------------------------- Black-Scholes ----
+f_npdf(x) => math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+// BS gamma, r = 0. Same value for call and put at equal strike/IV, so the
+// signed per-strike sum reduces to gamma * (callOI - putOI).
+f_gamma(S, K, T, sig) =>
+    float g = 0.0
+    if T > 0 and sig > 0 and S > 0 and K > 0
+        srt = sig * math.sqrt(T)
+        d1  = (math.log(S / K) + 0.5 * sig * sig * T) / srt
+        g := f_npdf(d1) / (S * srt)
+    g
+
+// ------------------------------------------------------------- parser -----
+// Returns [ok, spot, dte, mult, fallbackIv, y, m, d] and fills the arrays.
+f_parse(txt, ks, cs, ps, ivs) =>
+    ok = false
+    float spot = na
+    float dte  = na
+    float mult = 1.0
+    float fiv  = 0.2
+    int   yy = 0
+    int   mm = 0
+    int   dd = 0
+    if str.length(txt) > 0
+        // strip whitespace globally — the format is purely numeric/keyword
+        clean = str.replace_all(str.replace_all(str.replace_all(txt, "\r", ""), "\t", ""), " ", "")
+        lines = str.split(clean, "\n")
+        for li = 0 to array.size(lines) - 1
+            ln = array.get(lines, li)
+            if str.length(ln) == 0
+                continue
+            if str.startswith(ln, "#")
+                toks = str.split(str.substring(ln, 1), ";")
+                for ti = 0 to array.size(toks) - 1
+                    kv = str.split(array.get(toks, ti), "=")
+                    if array.size(kv) == 2
+                        k = str.lower(array.get(kv, 0))
+                        v = array.get(kv, 1)
+                        if k == "spot"
+                            spot := str.tonumber(v)
+                        else if k == "dte"
+                            dte := str.tonumber(v)
+                        else if k == "mult"
+                            mult := nz(str.tonumber(v), 1.0)
+                        else if k == "iv"
+                            fiv := nz(str.tonumber(v), 0.2)
+                        else if k == "date"
+                            dp = str.split(v, "-")
+                            if array.size(dp) == 3
+                                yy := int(nz(str.tonumber(array.get(dp, 0))))
+                                mm := int(nz(str.tonumber(array.get(dp, 1))))
+                                dd := int(nz(str.tonumber(array.get(dp, 2))))
+            else
+                f = str.split(ln, ";")
+                if array.size(f) >= 3
+                    k  = str.tonumber(array.get(f, 0))
+                    c  = str.tonumber(array.get(f, 1))
+                    p  = str.tonumber(array.get(f, 2))
+                    iv = array.size(f) >= 4 ? str.tonumber(array.get(f, 3)) : na
+                    if not na(k) and (nz(c) > 0 or nz(p) > 0)
+                        array.push(ks, k)
+                        array.push(cs, nz(c))
+                        array.push(ps, nz(p))
+                        array.push(ivs, na(iv) ? -1.0 : iv)   // -1 = use fallback
+        ok := array.size(ks) > 0 and not na(spot) and not na(dte) and dte > 0
+    [ok, spot, dte, mult, fiv, yy, mm, dd]
+
+// Total signed GEX (USD per 1% move) at a hypothetical spot S.
+f_totalGex(S, ks, cs, ps, ivs, fiv, T, mult) =>
+    total = 0.0
+    for i = 0 to array.size(ks) - 1
+        iv = array.get(ivs, i)
+        sig = iv > 0 ? iv : fiv
+        g = f_gamma(S, array.get(ks, i), T, sig)
+        total += g * (array.get(cs, i) - array.get(ps, i)) * mult * S * S * 0.01
+    total
+
+// Levels of one map: [flip, cw, pw, cw2, pw2, emAbs, totalAtSpot].
+// Flip = zero crossing of total GEX over a spot grid (nearest to spot).
+// Walls = strikes with the largest positive / most negative per-strike GEX.
+f_levels(ks, cs, ps, ivs, fiv, dte, mult, spot, gexOut) =>
+    T = dte / 365.0
+    n = array.size(ks)
+    // per-strike signed GEX at the current spot (also feeds the histogram)
+    array.clear(gexOut)
+    float cw = na, float pw = na, float cw2 = na, float pw2 = na
+    maxPos = 0.0, maxPos2 = 0.0
+    minNeg = 0.0, minNeg2 = 0.0
+    float ivAtm = fiv
+    minDist = 1e18
+    for i = 0 to n - 1
+        iv = array.get(ivs, i)
+        sig = iv > 0 ? iv : fiv
+        k = array.get(ks, i)
+        v = f_gamma(spot, k, T, sig) * (array.get(cs, i) - array.get(ps, i)) * mult * spot * spot * 0.01
+        array.push(gexOut, v)
+        if v > maxPos
+            maxPos2 := maxPos, cw2 := cw
+            maxPos := v,       cw := k
+        else if v > maxPos2
+            maxPos2 := v, cw2 := k
+        if v < minNeg
+            minNeg2 := minNeg, pw2 := pw
+            minNeg := v,       pw := k
+        else if v < minNeg2
+            minNeg2 := v, pw2 := k
+        d = math.abs(k - spot)
+        if d < minDist
+            minDist := d
+            ivAtm := sig
+    // flip: coarse grid + linear interpolation, crossing closest to spot
+    kLo = array.min(ks)
+    kHi = array.max(ks)
+    float flip = na
+    flipDist = 1e18
+    steps = 120
+    prevS = kLo
+    prevV = f_totalGex(kLo, ks, cs, ps, ivs, fiv, T, mult)
+    for j = 1 to steps
+        s = kLo + (kHi - kLo) * j / steps
+        v = f_totalGex(s, ks, cs, ps, ivs, fiv, T, mult)
+        if (prevV < 0 and v >= 0) or (prevV >= 0 and v < 0)
+            x = prevS + (s - prevS) * (0 - prevV) / (v - prevV)
+            if math.abs(x - spot) < flipDist
+                flipDist := math.abs(x - spot)
+                flip := x
+        prevS := s
+        prevV := v
+    em = spot * ivAtm * math.sqrt(1.0 / 365.0)
+    [flip, cw, pw, cw2, pw2, em, f_totalGex(spot, ks, cs, ps, ivs, fiv, T, mult)]
+
+// ------------------------------------------------------------ compute -----
+var float[] sK  = array.new_float()
+var float[] sC  = array.new_float()
+var float[] sP  = array.new_float()
+var float[] sIv = array.new_float()
+var float[] sGx = array.new_float()
+var float[] nK  = array.new_float()
+var float[] nC  = array.new_float()
+var float[] nP  = array.new_float()
+var float[] nIv = array.new_float()
+var float[] nGx = array.new_float()
+
+var box[]   boxes = array.new_box()
+var line[]  lns   = array.new_line()
+var label[] labs  = array.new_label()
+f_clear() =>
+    for b in boxes
+        box.delete(b)
+    array.clear(boxes)
+    for l in lns
+        line.delete(l)
+    array.clear(lns)
+    for lb in labs
+        label.delete(lb)
+    array.clear(labs)
+
+f_hline(y, col, w, st) =>
+    array.push(lns, line.new(bar_index - 300, y, bar_index, y, color = col, width = w, style = st, extend = extend.right))
+
+// flip stays global for the alerts (evaluated on every bar)
+var float g_flip = na
+var float g_cw   = na
+var float g_pw   = na
+
+if barstate.islast
+    array.clear(sK), array.clear(sC), array.clear(sP), array.clear(sIv)
+    array.clear(nK), array.clear(nC), array.clear(nP), array.clear(nIv)
+    f_clear()
+    [okS, spotS, dteS, multS, fivS, yS, mS, dS] = f_parse(structTxt, sK, sC, sP, sIv)
+    if not okS
+        array.push(labs, label.new(bar_index, high, "GEX Profile: no valid structure chain.\nSettings -> paste header + strike rows (see tooltip).",
+             style = label.style_label_left, color = color.new(color.orange, 10), textcolor = color.black, size = size.normal))
+    else
+        [flip, cw, pw, cw2, pw2, em, totGex] = f_levels(sK, sC, sP, sIv, fivS, dteS, multS, spotS, sGx)
+        g_flip := na(flip) ? na : flip + offset
+        g_cw   := na(cw) ? na : cw + offset
+        g_pw   := na(pw) ? na : pw + offset
+        // ---- lines ----
+        if showFlip and not na(flip)
+            f_hline(flip + offset, color.yellow, 2, line.style_solid)
+        if showWalls and not na(cw)
+            f_hline(cw + offset, color.red, 2, line.style_solid)
+        if showWalls and not na(pw)
+            f_hline(pw + offset, color.green, 2, line.style_solid)
+        if showWalls2 and not na(cw2)
+            f_hline(cw2 + offset, color.new(color.red, 45), 1, line.style_dashed)
+        if showWalls2 and not na(pw2)
+            f_hline(pw2 + offset, color.new(color.green, 45), 1, line.style_dashed)
+        if showEM and em > 0
+            f_hline(spotS + em + offset, color.new(color.blue, 55), 1, line.style_dotted)
+            f_hline(spotS - em + offset, color.new(color.blue, 55), 1, line.style_dotted)
+        // ---- histogram (per-strike signed GEX) ----
+        if showHist
+            maxAbs = 0.0
+            for v in sGx
+                maxAbs := math.max(maxAbs, math.abs(v))
+            if maxAbs > 0
+                x0 = bar_index + gap
+                nS = array.size(sK)
+                // half the median strike step as bar half-height
+                step = nS > 1 ? (array.max(sK) - array.min(sK)) / (nS - 1) * 0.4 : spotS * 0.001
+                for i = 0 to nS - 1
+                    v = array.get(sGx, i)
+                    w = int(math.round(profW * math.abs(v) / maxAbs))
+                    if w > 0
+                        k = array.get(sK, i) + offset
+                        array.push(boxes, box.new(x0, k + step, x0 + w, k - step,
+                             border_color = na, bgcolor = v >= 0 ? posCol : negCol))
+        // ---- near map ----
+        [okN, spotN, dteN, multN, fivN, yN, mN, dN] = f_parse(nearTxt, nK, nC, nP, nIv)
+        float ncw = na
+        float npw = na
+        if okN and showNear
+            [nflip, ncw_, npw_, ncw2, npw2, emN, totN] = f_levels(nK, nC, nP, nIv, fivN, dteN, multN, spotN, nGx)
+            ncw := ncw_
+            npw := npw_
+            if not na(ncw)
+                f_hline(ncw + offset, color.orange, 1, line.style_dotted)
+            if not na(npw)
+                f_hline(npw + offset, color.teal, 1, line.style_dotted)
+        // ---- regime + label ----
+        distPct = na(flip) ? na : (close - (flip + offset)) / (flip + offset) * 100
+        reg = na(distPct) ? -99 : math.abs(distPct) < neutralPct ? 0 : distPct > 0 ? 1 : -1
+        regTxt = reg == 1 ? "LONG GAMMA (pin/reversion)" : reg == -1 ? "SHORT GAMMA (trend/amplify)" : reg == 0 ? "FLIP ZONE" : "no flip found"
+        // staleness: only when the header carries a date
+        stale = false
+        dateTxt = "no snapshot date"
+        if yS > 0
+            snapT = timestamp("GMT", yS, mS, dS, 23, 59)
+            stale := (timenow - snapT) > 1000 * 60 * 60 * 36
+            dateTxt = str.tostring(yS) + "-" + (mS < 10 ? "0" : "") + str.tostring(mS) + "-" + (dS < 10 ? "0" : "") + str.tostring(dS)
+        txt = regTxt +
+             (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
+             "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
+             (na(ncw) ? "" : "\nNear CW " + str.tostring(ncw + offset, format.mintick) + " | Near PW " + str.tostring(npw + offset, format.mintick)) +
+             "\nChain: " + dateTxt + (stale ? "  !! STALE — refresh the paste !!" : "")
+        array.push(labs, label.new(bar_index, high, txt, style = label.style_label_left,
+             color = stale ? color.new(color.orange, 10) : reg == 1 ? color.new(color.green, 25) : reg == -1 ? color.new(color.red, 25) : color.new(color.gray, 25),
+             textcolor = stale ? color.black : color.white, size = size.small))
+
+bgcolor(showReg and not na(g_flip) ? (math.abs((close - g_flip) / g_flip * 100) < neutralPct ? color.new(color.gray, 90) : close > g_flip ? color.new(color.green, 93) : color.new(color.red, 93)) : na)
+
+// ------------------------------------------------------------- alerts -----
+alertcondition(ta.crossover(close, g_flip),  "Gamma: flip cross UP",   "Spot crossed the gamma flip UP -> toward long gamma / pinning")
+alertcondition(ta.crossunder(close, g_flip), "Gamma: flip cross DOWN", "Spot crossed the gamma flip DOWN -> short gamma / amplification")
+alertcondition(ta.crossunder(close, g_pw),   "Gamma: put wall BREAK",  "Put wall broken -> trapdoor open (amplification risk)")
+alertcondition(ta.crossover(close, g_pw),    "Gamma: put wall RECLAIM","Put wall reclaimed from below -> reversal signature")
+alertcondition(ta.crossover(close, g_cw),    "Gamma: call wall break UP", "Call wall exceeded -> usually magnet/pin, rarely continuation")

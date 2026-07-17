@@ -269,6 +269,55 @@ Thu-Fri-Mon pattern arms automatically at the Monday open and alerts when
 Friday's low is hit. Use the COT background/table as a weekly positioning
 filter for swing direction, not as an entry trigger.
 
+## 7) Gamma Exposure Profile — Manual Chain Input
+
+**⚠ TIMING: Erst publizieren, wenn der Moderator die 6 Republishes abgenickt
+hat** — kein neues Skript, solange der Account unter Beobachtung steht.
+
+**Titel:** Gamma Exposure Profile — Manual Chain Input
+
+**Beschreibung (Copy-Paste):**
+
+A self-contained dealer-gamma calculator. Pine cannot fetch external data, so
+instead of shipping stale hardcoded levels, this script takes the option
+chain as USER INPUT: paste strike rows into the settings and it computes the
+full gamma exposure profile on your chart — no republishing, never stale.
+
+What makes it original: most "GEX" scripts on TradingView approximate gamma
+from price or volume. This one implements the actual model — Black-Scholes
+gamma per strike from open interest and implied volatility, aggregated with
+the standard dealer sign convention (long call gamma, short put gamma) — and
+derives the flip point by scanning where total exposure changes sign, the
+same way institutional GEX tools do.
+
+How it works:
+- Input format (one paste): a header line
+  `#spot=24900;dte=21;mult=5;iv=0.18;date=2026-07-17`
+  followed by one line per strike: `strike;callOI;putOI[;iv]`.
+- Per strike, the script computes Black-Scholes gamma (r = 0) and the signed
+  dealer exposure `gamma x (callOI - putOI) x multiplier x spot² x 1%`.
+- Gamma flip = the zero crossing of total exposure over a spot grid (closest
+  to spot); call/put walls = strikes with the largest positive / most
+  negative exposure; second walls dashed; expected move from ATM IV.
+- A second optional text area takes a near-dated chain (e.g. 0-5 DTE) for
+  the short-term walls, drawn dotted — structure vs day-weather separation.
+- The histogram next to price shows the signed per-strike profile; the
+  background colors the regime (above flip = long gamma, below = short
+  gamma); a date in the header enables a staleness warning after 36h.
+- Alerts: flip cross up/down, put-wall break/reclaim, call-wall break.
+
+How to use it: pull the option chain of the underlying index (your broker
+platform or the exchange's public chain), paste the strike rows once per day,
+and read the chart: above the flip, dealer hedging dampens moves (mean
+reversion toward walls, pinning); below the flip it amplifies them (trend
+days, trapdoor under the put wall). The levels are model estimates from your
+own snapshot — context, not trade signals.
+
+*This script is part of a consistent set of open-source session, range and
+volume tools — the companions are on my profile.*
+
+---
+
 ## Kategorien & Tags (beim Publizieren)
 
 Kategorie = TV-Dropdown (fix; nächstliegenden nehmen, falls Name abweicht).
@@ -282,6 +331,7 @@ Tags = Freitext, klein, ohne Brand/Personennamen.
 | Session Candle Levels — Weekly Swing | Support and Resistance | swingtrading, weeklylevels, monthlylevels, cot, breakout, alerts, keylevels |
 | Opening Range ACD + Pivot Ranges | Pivot points and levels | acd, openingrange, orb, pivotrange, breakout, daytrading, bias, daytradingsystem |
 | Overnight Range & Sessions | Support and Resistance | overnightrange, sessions, gap, indices, breakout, asiasession, premarket |
+| Gamma Exposure Profile (NACH Moderator-OK) | Volatility (sonst Support and Resistance) | gamma, gex, options, openinterest, dealerpositioning, gammaflip, callwall, putwall, volatility |
 
 Begründung: Futures-Tools dorthin, wo die Volume-Zielgruppe sucht; die drei
 Level-Tools teilen sich Support and Resistance (Familien-Eindruck im Profil);
