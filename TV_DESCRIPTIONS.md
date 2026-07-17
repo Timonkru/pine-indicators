@@ -269,6 +269,25 @@ Thu-Fri-Mon pattern arms automatically at the Monday open and alerts when
 Friday's low is hit. Use the COT background/table as a weekly positioning
 filter for swing direction, not as an entry trigger.
 
+## Kategorien & Tags (beim Publizieren)
+
+Kategorie = TV-Dropdown (fix; nächstliegenden nehmen, falls Name abweicht).
+Tags = Freitext, klein, ohne Brand/Personennamen.
+
+| Skript | Kategorie | Tags |
+|---|---|---|
+| Futures Volume Profile | Volume | volumeprofile, futures, cfd, poc, valuearea, sessions, dax, nasdaq, orderflow |
+| Futures Volume VWAP + Bands | VWAP (sonst Volume) | vwap, futures, cfd, volume, bands, standarddeviation, meanreversion, intraday |
+| Session Candle Levels — Intraday | Support and Resistance | sessions, intraday, daytrading, breakout, alerts, keylevels, premarket, fomc, indices |
+| Session Candle Levels — Weekly Swing | Support and Resistance | swingtrading, weeklylevels, monthlylevels, cot, breakout, alerts, keylevels |
+| Opening Range ACD + Pivot Ranges | Pivot points and levels | acd, openingrange, orb, pivotrange, breakout, daytrading, bias, daytradingsystem |
+| Overnight Range & Sessions | Support and Resistance | overnightrange, sessions, gap, indices, breakout, asiasession, premarket |
+
+Begründung: Futures-Tools dorthin, wo die Volume-Zielgruppe sucht; die drei
+Level-Tools teilen sich Support and Resistance (Familien-Eindruck im Profil);
+„hougaard"/„fisher" NICHT als Tag (Promotion-Risiko — in der Beschreibung als
+Methodenquelle ist es okay).
+
 ## Merkzettel Neu-Publikation
 1. Frisches Chart-Layout, NUR das eine Skript, Standard-Farben, keine anderen
    Indikatoren/Zeichnungen.
