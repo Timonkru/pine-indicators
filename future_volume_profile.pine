@@ -25,9 +25,12 @@ pocCol   = input.color(color.red, "POC", group = "Display")
 vaCol    = input.color(color.blue, "Value area", group = "Display")
 barCol   = input.color(color.teal, "Volume bars", group = "Display")
 
+volMode   = input.string("Futures symbol", "Volume source",
+     options = ["Chart (CFD)", "Futures symbol"], group = "Volume",
+     tooltip = "Futures = real exchange volume via request.security. Chart = this chart's own volume (use on a native futures chart).")
 autoFut   = input.bool(true, "Auto-detect futures symbol", group = "Volume")
 futManual = input.symbol("EUREX:FDAX1!", "…manual otherwise", group = "Volume")
-useChart  = input.bool(false, "Use chart volume (on a native futures chart)", group = "Volume")
+useChart  = volMode == "Chart (CFD)"
 
 // ---- auto-detection: chart symbol -> matching futures contract ----
 f_detectFut() =>

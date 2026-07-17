@@ -48,11 +48,11 @@ showPROnlyToday = input.bool(true,  'Show daily PR for today only', group = 'Piv
 prLineWidth     = input.int(2, 'Line width', minval = 1, maxval = 4, group = 'Pivot ranges')
 
 // ===== Settings: Market Auto-Detection =====
-autoMarket    = input.bool(true,  'Auto-detect (DAX/ES/Nikkei/...)', group = 'Market & Session',
+autoMarket    = input.bool(true,  'Auto-detect (DAX/ES/Nikkei/...)', group = 'Market & session',
                             tooltip = 'Detects the symbol automatically and sets cash open + timezone accordingly. OFF = manual settings below.')
 manualMarket  = input.string('EU (DAX/FTSE/CAC)', 'Manual market mode',
                               options = ['EU (DAX/FTSE/CAC)', 'US (ES/NQ/YM/RTY)', 'UK (FTSE only)', 'Asia (Nikkei)', 'Asia (HSI)', 'Custom (own time)'],
-                              group = 'Market & Session', tooltip = 'Only used when auto-detect is OFF')
+                              group = 'Market & session', tooltip = 'Only used when auto-detect is OFF')
 
 // ===== Settings: ACD =====
 showACD       = input.bool(true,  'Show ACD A/C lines', group = 'ACD entry system')

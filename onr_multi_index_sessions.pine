@@ -2,9 +2,9 @@
 indicator("Overnight Range & Sessions — Multi-Index", shorttitle="ONR Sessions", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
 // === TIMEZONE & DAYLIGHT SAVING ===
 // auto-detection of the DST gap between EU and US
-dstMode = input.string('Auto', 'DST mode', options=['Auto', 'Manual'], group='Time settings', tooltip='Auto = detects the US/EU DST shift automatically from the Berlin-NY time difference')
-manualEUDST = input.bool(true, 'EU summer time (CET->CEST)', group='Time settings', tooltip='Manual mode only: is the EU currently on summer time?')
-manualUSDST = input.bool(true, 'US summer time (EST->EDT)', group='Time settings', tooltip='Manual mode only: is the US currently on summer time?')
+dstMode = input.string('Auto', 'DST mode', options=['Auto', 'Manual'], group='Timezone & DST', tooltip='Auto = detects the US/EU DST shift automatically from the Berlin-NY time difference')
+manualEUDST = input.bool(true, 'EU summer time (CET→CEST)', group='Timezone & DST', tooltip='Manual mode only: is the EU currently on summer time?')
+manualUSDST = input.bool(true, 'US summer time (EST→EDT)', group='Timezone & DST', tooltip='Manual mode only: is the US currently on summer time?')
 // === INPUTS ===
 manualOverride = input.bool(false, "Manual index selection", group="Index selection")
 manualPreset = input.string("DAX", "Manual index", options=["DAX","FTSE","US","Russell","Gold","Silver","Copper","Oil","Nikkei","HK","Forex","Custom"], group="Index selection")
@@ -21,14 +21,14 @@ asiaSessionTime  = input.session("0100-0900", "Asia session time", group="Sessio
 euSessColor      = input.color(color.new(color.blue, 85), "EU color", group="Session boxes")
 usSessColor      = input.color(color.new(color.red, 85), "US color", group="Session boxes")
 asiaSessColor    = input.color(color.new(color.yellow, 85), "Asia color", group="Session boxes")
-euBorderCol      = input.color(color.new(color.blue, 50), "EU Border", group="Session boxes")
-usBorderCol      = input.color(color.new(color.red, 50), "US Border", group="Session boxes")
-asiaBorderCol    = input.color(color.new(color.yellow, 50), "Asia Border", group="Session boxes")
-sessBorderWidth  = input.int(1, "Session Border Width", 1, 3, group="Session boxes")
+euBorderCol      = input.color(color.new(color.blue, 50), "EU border", group="Session boxes")
+usBorderCol      = input.color(color.new(color.red, 50), "US border", group="Session boxes")
+asiaBorderCol    = input.color(color.new(color.yellow, 50), "Asia border", group="Session boxes")
+sessBorderWidth  = input.int(1, "Session border width", 1, 3, group="Session boxes")
 sessFrameOnly    = input.bool(true, "Frame only (no fill)", group="Session boxes")
-showSessLabels   = input.bool(true, "Session Labels", group="Session boxes")
+showSessLabels   = input.bool(true, "Session labels", group="Session boxes")
 // === VISUALS ===
-tz = input.string("Europe/Berlin", "Timezone", group="Display")
+tz = input.string("Europe/Berlin", "Timezone", group="Timezone & DST")
 
 // === AUTO DST-ERKENNUNG ===
 // Berlin-NY difference: 6h=both equal, 5h=US summer/EU winter(-1), 7h=EU summer/US winter(+1)

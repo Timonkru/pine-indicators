@@ -9,9 +9,9 @@ indicator("Futures Volume VWAP + Bands — CFD Charts", shorttitle = "Fut Vol VW
 anchorIn = input.string("Session (day)", "Anchor",
      options = ["Session (day)", "Week", "Month"], group = "VWAP")
 srcIn    = input.source(hlc3, "Price source", group = "VWAP")
-volMode  = input.string("Chart (CFD)", "Volume source",
+volMode  = input.string("Futures symbol", "Volume source",
      options = ["Chart (CFD)", "Futures symbol"], group = "Volume",
-     tooltip = "Futures = real exchange volume via request.security. The price stays this chart's CFD price.")
+     tooltip = "Futures = real exchange volume via request.security. The price stays this chart's CFD price. Chart = this chart's own volume (use on a native futures chart).")
 autoFut  = input.bool(true, "Auto-detect futures symbol", group = "Volume")
 futMan   = input.symbol("EUREX:FDAX1!", "…manual otherwise", group = "Volume")
 

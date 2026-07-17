@@ -4,105 +4,105 @@ indicator('Session Candle Levels & Alerts — Intraday', shorttitle = 'Session L
 // ============================================================
 //  🎛️ DISPLAY MASTER
 // ============================================================
-showLabels    = input.bool(true,  '🏷️ Show all labels (master)', group = '🎛️ Display', tooltip = 'Global switch: disables all label annotations on the chart (volume %, retests, outlier warnings, event signals etc.). Lines/boxes/alerts stay active.')
+showLabels    = input.bool(true,  'Show all labels (master)', group = 'Display', tooltip = 'Global switch: disables all label annotations on the chart (volume %, retests, outlier warnings, event signals etc.). Lines/boxes/alerts stay active.')
 
 // helper: labels are only created when the master switch is on
 lbl(x, y, txt, color, textcolor, style, size) =>
     showLabels ? label.new(x = x, y = y, text = txt, color = color, textcolor = textcolor, style = style, size = size) : na
 
 // === EINSTELLUNGEN 15-MIN ===
-showEU       = input.bool(true,  'EU markets active',           group = '📊 15-Min Candles (EU/US)')
-showUS       = input.bool(true,  'US markets & gold active',    group = '📊 15-Min Candles (EU/US)')
-showEU_2nd15 = input.bool(true,  'EU 2nd candle (15m)',        group = '📊 15-Min Candles (EU/US)')
-showEU_7th15 = input.bool(true,  'EU 7th candle (15m)',        group = '📊 15-Min Candles (EU/US)')
-showUS_2nd15 = input.bool(true,  'US 2nd candle (15m)',        group = '📊 15-Min Candles (EU/US)')
-showUS_7th15 = input.bool(true,  'US 7th candle (15m)',        group = '📊 15-Min Candles (EU/US)')
-euColor      = input.color(color.blue,   'EU color',          group = '📊 15-Min Candles (EU/US)')
-usColor      = input.color(color.orange, 'US/gold color',     group = '📊 15-Min Candles (EU/US)')
-lineWidth    = input.int(2, 'Line width', minval = 1, maxval = 5, group = '📊 15-Min Candles (EU/US)')
+showEU       = input.bool(true,  'EU markets active',           group = '15-min candles (EU/US)')
+showUS       = input.bool(true,  'US markets & gold active',    group = '15-min candles (EU/US)')
+showEU_2nd15 = input.bool(true,  'EU 2nd candle (15m)',        group = '15-min candles (EU/US)')
+showEU_7th15 = input.bool(true,  'EU 7th candle (15m)',        group = '15-min candles (EU/US)')
+showUS_2nd15 = input.bool(true,  'US 2nd candle (15m)',        group = '15-min candles (EU/US)')
+showUS_7th15 = input.bool(true,  'US 7th candle (15m)',        group = '15-min candles (EU/US)')
+euColor      = input.color(color.blue,   'EU color',          group = '15-min candles (EU/US)')
+usColor      = input.color(color.orange, 'US/gold color',     group = '15-min candles (EU/US)')
+lineWidth    = input.int(2, 'Line width', minval = 1, maxval = 5, group = '15-min candles (EU/US)')
 
 // === EINSTELLUNGEN HK50 ===
-showHK50     = input.bool(true,  'HK50 active',                group = '🌏 HK50 Special')
-showHK_230   = input.bool(true,  'HK50 02:30 Candle (15m)',   group = '🌏 HK50 Special')
-hkColor      = input.color(color.purple, 'HK50 color',        group = '🌏 HK50 Special')
+showHK50     = input.bool(true,  'HK50 active',                group = 'HK50 special')
+showHK_230   = input.bool(true,  'HK50 02:30 Candle (15m)',   group = 'HK50 special')
+hkColor      = input.color(color.purple, 'HK50 color',        group = 'HK50 special')
 
 // === EINSTELLUNGEN JPN225 ===
-showJPN      = input.bool(true,  'JPN225 active',              group = '🗾 JPN225 Special')
-showJPN_050  = input.bool(true,  'JPN225 00:50 Candle (10m)', group = '🗾 JPN225 Special')
-jpnColor     = input.color(color.teal,   'JPN225 color',      group = '🗾 JPN225 Special')
+showJPN      = input.bool(true,  'JPN225 active',              group = 'JPN225 special')
+showJPN_050  = input.bool(true,  'JPN225 00:50 Candle (10m)', group = 'JPN225 special')
+jpnColor     = input.color(color.teal,   'JPN225 color',      group = 'JPN225 special')
 
 // === EINSTELLUNGEN GOLD SESSION CANDLES ===
-showGoldSession = input.bool(true, 'Gold session candles active', group = '🥇 Gold/Commodities Sessions')
-showGold_0145   = input.bool(true, 'Gold 01:45 (after NY-Asia)', group = '🥇 Gold/Commodities Sessions', tooltip = 'Quiet phase after NY-Asia handover, Shanghai wakes up')
-showGold_1415   = input.bool(true, 'Gold 14:15 (after EU lunch)', group = '🥇 Gold/Commodities Sessions', tooltip = 'After the EU lunch lull, before the US open')
-goldSessionColor = input.color(color.orange, 'Gold session color', group = '🥇 Gold/Commodities Sessions')
+showGoldSession = input.bool(true, 'Gold session candles active', group = 'Gold/commodities sessions')
+showGold_0145   = input.bool(true, 'Gold 01:45 (after NY-Asia)', group = 'Gold/commodities sessions', tooltip = 'Quiet phase after NY-Asia handover, Shanghai wakes up')
+showGold_1415   = input.bool(true, 'Gold 14:15 (after EU lunch)', group = 'Gold/commodities sessions', tooltip = 'After the EU lunch lull, before the US open')
+goldSessionColor = input.color(color.orange, 'Gold session color', group = 'Gold/commodities sessions')
 
 // === EINSTELLUNGEN FOREX SESSION CANDLES ===
-showForexSession = input.bool(true, 'Forex session candles active', group = '💱 Forex Sessions')
-showFX_0815      = input.bool(true, 'FX 08:15 (after pre-London)', group = '💱 Forex Sessions', tooltip = 'Quiet phase after Asia/pre-London, London interbank session starts')
-forexSessionColor = input.color(color.purple, 'Forex session color', group = '💱 Forex Sessions')
+showForexSession = input.bool(true, 'Forex session candles active', group = 'Forex sessions')
+showFX_0815      = input.bool(true, 'FX 08:15 (after pre-London)', group = 'Forex sessions', tooltip = 'Quiet phase after Asia/pre-London, London interbank session starts')
+forexSessionColor = input.color(color.purple, 'Forex session color', group = 'Forex sessions')
 
 // === EINSTELLUNGEN 5-MIN ===
-show5MinEU   = input.bool(true,  'EU 5-Min Levels',           group = '📈 5-Min Candles (1. & 4.)')
-show5MinUS   = input.bool(true,  'US 5-Min Levels',           group = '📈 5-Min Candles (1. & 4.)')
-showEU1stLow = input.bool(true,  'Show EU 1st candle low',    group = '📈 5-Min Candles (1. & 4.)')
-showUS1stLow = input.bool(true,  'Show US 1st candle low',    group = '📈 5-Min Candles (1. & 4.)')
-eu5MinColor  = input.color(color.green, 'EU 5-min color',     group = '📈 5-Min Candles (1. & 4.)')
-us5MinColor  = input.color(color.red,   'US 5-min color',     group = '📈 5-Min Candles (1. & 4.)')
+show5MinEU   = input.bool(true,  'EU 5-Min Levels',           group = '5-min candles (1st & 4th)')
+show5MinUS   = input.bool(true,  'US 5-Min Levels',           group = '5-min candles (1st & 4th)')
+showEU1stLow = input.bool(true,  'Show EU 1st candle low',    group = '5-min candles (1st & 4th)')
+showUS1stLow = input.bool(true,  'Show US 1st candle low',    group = '5-min candles (1st & 4th)')
+eu5MinColor  = input.color(color.green, 'EU 5-min color',     group = '5-min candles (1st & 4th)')
+us5MinColor  = input.color(color.red,   'US 5-min color',     group = '5-min candles (1st & 4th)')
 
 // === 8 BALL & TEENAGER (Tom Hougaard) ===
-show8Ball    = input.bool(true,  '8 Ball & Teenager active (Tom Hougaard)',  group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Marks the 8th (8 Ball) and 13th (Teenager) 5-min candle after the open. Original strategy: FTSE/indices.')
-show8BallEU  = input.bool(true,  'EU 8 Ball  (5-Min Bar 8 → 09:35-09:40)', group = '🎱 8 Ball & Teenager (Hougaard)')
-showTeenEU   = input.bool(true,  'EU Teenager (5-Min Bar 13 → 10:00-10:05)', group = '🎱 8 Ball & Teenager (Hougaard)')
-show8BallUS  = input.bool(true,  'US 8 Ball  (5-Min Bar 8 → 16:05-16:10)', group = '🎱 8 Ball & Teenager (Hougaard)')
-showTeenUS   = input.bool(true,  'US Teenager (5-Min Bar 13 → 16:30-16:35)', group = '🎱 8 Ball & Teenager (Hougaard)')
-orderlyMult  = input.float(1.5, 'Orderly filter (max. range vs. avg)', minval = 1.0, maxval = 5.0, step = 0.1, group = '🎱 8 Ball & Teenager (Hougaard)', tooltip = 'Tom Hougaard rule: only trade the bar if its range is at most this factor times the average of the preceding bars. Outlier bars are skipped.')
-ballColor    = input.color(color.fuchsia, '8 Ball color',  group = '🎱 8 Ball & Teenager (Hougaard)')
-teenColor    = input.color(color.aqua,    'Teenager color', group = '🎱 8 Ball & Teenager (Hougaard)')
+show8Ball    = input.bool(true,  '8 Ball & Teenager active (Tom Hougaard)',  group = '8 Ball & Teenager (Hougaard)', tooltip = 'Marks the 8th (8 Ball) and 13th (Teenager) 5-min candle after the open. Original strategy: FTSE/indices.')
+show8BallEU  = input.bool(true,  'EU 8 Ball  (5-Min Bar 8 → 09:35-09:40)', group = '8 Ball & Teenager (Hougaard)')
+showTeenEU   = input.bool(true,  'EU Teenager (5-Min Bar 13 → 10:00-10:05)', group = '8 Ball & Teenager (Hougaard)')
+show8BallUS  = input.bool(true,  'US 8 Ball  (5-Min Bar 8 → 16:05-16:10)', group = '8 Ball & Teenager (Hougaard)')
+showTeenUS   = input.bool(true,  'US Teenager (5-Min Bar 13 → 16:30-16:35)', group = '8 Ball & Teenager (Hougaard)')
+orderlyMult  = input.float(1.5, 'Orderly filter (max. range vs. avg)', minval = 1.0, maxval = 5.0, step = 0.1, group = '8 Ball & Teenager (Hougaard)', tooltip = 'Tom Hougaard rule: only trade the bar if its range is at most this factor times the average of the preceding bars. Outlier bars are skipped.')
+ballColor    = input.color(color.fuchsia, '8 Ball color',  group = '8 Ball & Teenager (Hougaard)')
+teenColor    = input.color(color.aqua,    'Teenager color', group = '8 Ball & Teenager (Hougaard)')
 
 // === NEU: PRE-MARKET LEVELS ===
-showPreMarket30 = input.bool(true, 'Show 30-min low before cash open', group = '🌅 Pre-Market Levels')
-showPreMarket10 = input.bool(true, 'Show 10-min high/low before cash open', group = '🌅 Pre-Market Levels')
-showPreMarketLabels = input.bool(true, 'Show pre-market labels', group = '🌅 Pre-Market Levels', tooltip = 'Text labels only (lines/alerts stay active)')
-preMarket30Color = input.color(color.purple, '30-min level color', group = '🌅 Pre-Market Levels')
-preMarket10Color = input.color(color.yellow, '10-min level color', group = '🌅 Pre-Market Levels')
+showPreMarket30 = input.bool(true, 'Show 30-min low before cash open', group = 'Pre-market levels')
+showPreMarket10 = input.bool(true, 'Show 10-min high/low before cash open', group = 'Pre-market levels')
+showPreMarketLabels = input.bool(true, 'Show pre-market labels', group = 'Pre-market levels', tooltip = 'Text labels only (lines/alerts stay active)')
+preMarket30Color = input.color(color.purple, '30-min level color', group = 'Pre-market levels')
+preMarket10Color = input.color(color.yellow, '10-min level color', group = 'Pre-market levels')
 
 // === SPEZIAL-EVENTS (FOMC/NFP) - RULE OF 4 + PRESS CONFERENCE ===
-enableSpecialEvent = input.bool(false, 'Event mode active', group = '📰 FOMC/NFP Events')
-eventHour = input.int(20, 'News release hour (CET)', minval = 0, maxval = 23, group = '📰 FOMC/NFP Events', tooltip = 'FOMC: 20:00 CET (14:00 Eastern)')
-eventMinute = input.int(0, 'News Release Minute', minval = 0, maxval = 59, group = '📰 FOMC/NFP Events', tooltip = 'Usually :00 (full hour)')
-showRuleOf4 = input.bool(true, 'Rule of 4 Bar (10-Min)', group = '📰 FOMC/NFP Events', tooltip = 'The 4th 10-min candle after the news release (30 min later)')
-showPressConf5Min = input.bool(true, 'Press Conference Bar (5-Min)', group = '📰 FOMC/NFP Events', tooltip = 'The 5-min candle 30 min after the news release')
-eventColor = input.color(color.fuchsia, 'Event level color', group = '📰 FOMC/NFP Events')
-ruleOf4Color = input.color(color.yellow, 'Rule of 4 color', group = '📰 FOMC/NFP Events')
-eventColorLong = input.color(color.green, 'Long signal color', group = '📰 FOMC/NFP Events')
-eventColorShort = input.color(color.red, 'Short signal color', group = '📰 FOMC/NFP Events')
+enableSpecialEvent = input.bool(false, 'Event mode active', group = 'FOMC/NFP events')
+eventHour = input.int(20, 'News release hour (CET)', minval = 0, maxval = 23, group = 'FOMC/NFP events', tooltip = 'FOMC: 20:00 CET (14:00 Eastern)')
+eventMinute = input.int(0, 'News Release Minute', minval = 0, maxval = 59, group = 'FOMC/NFP events', tooltip = 'Usually :00 (full hour)')
+showRuleOf4 = input.bool(true, 'Rule of 4 Bar (10-Min)', group = 'FOMC/NFP events', tooltip = 'The 4th 10-min candle after the news release (30 min later)')
+showPressConf5Min = input.bool(true, 'Press Conference Bar (5-Min)', group = 'FOMC/NFP events', tooltip = 'The 5-min candle 30 min after the news release')
+eventColor = input.color(color.fuchsia, 'Event level color', group = 'FOMC/NFP events')
+ruleOf4Color = input.color(color.yellow, 'Rule of 4 color', group = 'FOMC/NFP events')
+eventColorLong = input.color(color.green, 'Long signal color', group = 'FOMC/NFP events')
+eventColorShort = input.color(color.red, 'Short signal color', group = 'FOMC/NFP events')
 
 // === VOLUMEN-ANALYSE ===
-showVolEU1st  = input.bool(true, 'EU 1st candle volume',      group = '📉 Volume analysis')
-showVolUS1st  = input.bool(true, 'US 1st candle volume',      group = '📉 Volume analysis')
-showVolEU4th  = input.bool(true, 'EU 4th candle breakouts',  group = '📉 Volume analysis')
-showVolUS4th  = input.bool(true, 'US 4th candle breakouts',  group = '📉 Volume analysis')
-showVol15Min  = input.bool(true, '15-min breakouts',        group = '📉 Volume analysis')
-volThreshold  = input.float(1.5, 'Volume threshold (x average)', minval = 1.0, maxval = 3.0, step = 0.1, group = '📉 Volume analysis')
-volPeriod     = input.int(20, 'Averaging period', minval = 5, maxval = 100, group = '📉 Volume analysis')
+showVolEU1st  = input.bool(true, 'EU 1st candle volume',      group = 'Volume')
+showVolUS1st  = input.bool(true, 'US 1st candle volume',      group = 'Volume')
+showVolEU4th  = input.bool(true, 'EU 4th candle breakouts',  group = 'Volume')
+showVolUS4th  = input.bool(true, 'US 4th candle breakouts',  group = 'Volume')
+showVol15Min  = input.bool(true, '15-min breakouts',        group = 'Volume')
+volThreshold  = input.float(1.5, 'Volume threshold (x average)', minval = 1.0, maxval = 3.0, step = 0.1, group = 'Volume')
+volPeriod     = input.int(20, 'Averaging period', minval = 5, maxval = 100, group = 'Volume')
 
 // === BREAKOUT CONFIRMATION ===
-breakoutMode        = input.string('Volume-confirmed', 'Breakout mode', options = ['Immediate', 'Volume-confirmed'], group = '⚡ Breakout confirmation')
-breakoutVolThreshold = input.float(1.0, 'Min. volume for a breakout (x average)', minval = 0.5, maxval = 2.0, step = 0.1, group = '⚡ Breakout confirmation', tooltip = 'A breakout only counts if volume is above this value')
+breakoutMode        = input.string('Volume-confirmed', 'Breakout mode', options = ['Immediate', 'Volume-confirmed'], group = 'Breakout confirmation')
+breakoutVolThreshold = input.float(1.0, 'Min. volume for a breakout (x average)', minval = 0.5, maxval = 2.0, step = 0.1, group = 'Breakout confirmation', tooltip = 'A breakout only counts if volume is above this value')
 
 // === RETEST-EINSTELLUNGEN ===
-showRetestLabels = input.bool(true, 'Show retest labels', group = '↩️ Retest settings')
-showRetestAlerts = input.bool(true, 'Enable retest alerts', group = '↩️ Retest settings')
-retestLabelColorEU = input.color(color.blue, 'EU retest color', group = '↩️ Retest settings')
-retestLabelColorUS = input.color(color.orange, 'US retest color', group = '↩️ Retest settings')
+showRetestLabels = input.bool(true, 'Show retest labels', group = 'Retest')
+showRetestAlerts = input.bool(true, 'Enable retest alerts', group = 'Retest')
+retestLabelColorEU = input.color(color.blue, 'EU retest color', group = 'Retest')
+retestLabelColorUS = input.color(color.orange, 'US retest color', group = 'Retest')
 
 // === ZEITZONE & ZEITUMSTELLUNG ===
 // EU times (9h, 10h, 8h etc.) need no shift — Europe/Berlin adjusts automatically.
 // US times (15h, 16h, 17h, 14h in Berlin time) must be shifted during the DST gap.
-dstMode = input.string('Auto', 'DST mode', options = ['Auto', 'Manual'], group = '🕐 Timezone & DST', tooltip = 'Auto = detects the US/EU DST shift automatically from the Berlin-NY time difference')
-manualEUDST = input.bool(true, 'EU summer time (CET→CEST)', group = '🕐 Timezone & DST', tooltip = 'Manual mode only: is the EU currently on summer time?')
-manualUSDST = input.bool(true, 'US summer time (EST→EDT)', group = '🕐 Timezone & DST', tooltip = 'Manual mode only: is the US currently on summer time?')
+dstMode = input.string('Auto', 'DST mode', options = ['Auto', 'Manual'], group = 'Timezone & DST', tooltip = 'Auto = detects the US/EU DST shift automatically from the Berlin-NY time difference')
+manualEUDST = input.bool(true, 'EU summer time (CET→CEST)', group = 'Timezone & DST', tooltip = 'Manual mode only: is the EU currently on summer time?')
+manualUSDST = input.bool(true, 'US summer time (EST→EDT)', group = 'Timezone & DST', tooltip = 'Manual mode only: is the US currently on summer time?')
 
 tz = 'Europe/Berlin'
 
