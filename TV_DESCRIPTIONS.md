@@ -454,6 +454,10 @@ volume tools — the companions are on my profile.*
 
 ## 11) Liquidity Sweep Volume — CFD Charts
 
+**⚠ STATUS: WARTEND (Timons Entscheid 19.07.) — NICHT publizieren.** Timon will
+das Tool erst selbst am Chart beobachten, bevor es rausgeht (Definition ist
+frisch, Parameter unvalidiert). Publikation erst nach seinem expliziten Go.
+
 **Titel:** Liquidity Sweep Volume — CFD Charts
 
 **Beschreibung (Copy-Paste):**
