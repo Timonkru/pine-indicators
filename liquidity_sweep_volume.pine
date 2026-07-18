@@ -140,6 +140,11 @@ f_push(_price, _birth, _isLow, _isPD) =>
                 lvls.remove(i)
                 break
 
+f_fmt(_v) =>
+    math.abs(_v) >= 1e6 ? str.tostring(_v / 1e6, "#.#") + "M" :
+     math.abs(_v) >= 1e3 ? str.tostring(_v / 1e3, "#.#") + "K" :
+     str.tostring(_v, "#")
+
 f_src(_L) =>
     (_L.isPD ? (_L.isLow ? "PDL" : "PDH") : (_L.isLow ? "low" : "high"))
      + (_L.legs >= 2 ? " x" + str.tostring(_L.legs) : "")
@@ -150,11 +155,6 @@ f_numtxt(_L) =>
      + (_L.excExact ? "\nDelta " + (_L.excDelta > 0 ? "+" : "") + f_fmt(_L.excDelta) : "")
      + (_L.excExact and _L.excVol > 0 ?
         "\nAbsorbed " + str.tostring(100.0 * math.abs(_L.excDelta) / _L.excVol, "#") + "% one-sided" : "")
-
-f_fmt(_v) =>
-    math.abs(_v) >= 1e6 ? str.tostring(_v / 1e6, "#.#") + "M" :
-     math.abs(_v) >= 1e3 ? str.tostring(_v / 1e3, "#.#") + "K" :
-     str.tostring(_v, "#")
 
 f_draw(_L) =>
     // final stage: replace the provisional Sweep? label
