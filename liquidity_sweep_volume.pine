@@ -102,6 +102,7 @@ type Lvl
     int   wait       // remaining confirmation bars (-1 = not in confirmation)
     bool  rest       // true once a bar after the reclaim stayed inside
                      // (distinguishes excursion continuation from re-take)
+    label lbl        // provisional Sweep? label (two-stage display)
 
 var array<Lvl> lvls = array.new<Lvl>()
 
@@ -119,7 +120,7 @@ var int nSWin = 0
 atrV = ta.atr(atrLenS)
 
 f_push(_price, _birth, _isLow, _isPD) =>
-    lvls.push(Lvl.new(_price, _birth, _isLow, _isPD, 0, _price, 0.0, 0.0, true, -1, false))
+    lvls.push(Lvl.new(_price, _birth, _isLow, _isPD, 0, _price, 0.0, 0.0, true, -1, false, label(na)))
     // cap per side (oldest non-PD first)
     int nSide = 0
     for i = 0 to lvls.size() - 1
@@ -129,8 +130,20 @@ f_push(_price, _birth, _isLow, _isPD) =>
         for i = 0 to lvls.size() - 1
             L = lvls.get(i)
             if L.isLow == _isLow and not L.isPD
+                if not na(L.lbl)
+                    label.delete(L.lbl)
                 lvls.remove(i)
                 break
+
+f_src(_L) =>
+    _L.isPD ? (_L.isLow ? "PDL" : "PDH") : (_L.isLow ? "low" : "high")
+
+f_numtxt(_L) =>
+    rv = volMA > 0 ? _L.excVol / volMA : 0.0
+    "\nVol " + f_fmt(_L.excVol) + " (" + str.tostring(rv, "#.##") + "x)"
+     + (_L.excExact ? "\nDelta " + (_L.excDelta > 0 ? "+" : "") + f_fmt(_L.excDelta) : "")
+     + (_L.excExact and _L.excVol > 0 ?
+        "\nAbsorbed " + str.tostring(100.0 * math.abs(_L.excDelta) / _L.excVol, "#") + "% one-sided" : "")
 
 f_fmt(_v) =>
     math.abs(_v) >= 1e6 ? str.tostring(_v / 1e6, "#.#") + "M" :
@@ -138,6 +151,9 @@ f_fmt(_v) =>
      str.tostring(_v, "#")
 
 f_draw(_L, _ok) =>
+    // final stage: replace the provisional Sweep? label
+    if not na(_L.lbl)
+        label.delete(_L.lbl)
     // reference line: from the swing that provided the liquidity to here
     lc = _ok ? (_L.isLow ? color.new(color.teal, 25) : color.new(color.red, 25))
              : color.new(color.gray, 60)
@@ -146,12 +162,7 @@ f_draw(_L, _ok) =>
     rvol = volMA > 0 ? _L.excVol / volMA : 0.0
     strong = rvol >= confMult
     txt = _ok ?
-         ("Sweep " + (_L.isPD ? (_L.isLow ? "PDL" : "PDH") : (_L.isLow ? "low" : "high"))
-          + (_L.excExact ? "" : " ~")
-          + "\nVol " + f_fmt(_L.excVol) + " (" + str.tostring(rvol, "#.##") + "x)"
-          + (_L.excExact ? "\nDelta " + (_L.excDelta > 0 ? "+" : "") + f_fmt(_L.excDelta) : "")
-          + (_L.excExact and _L.excVol > 0 ?
-             "\nAbsorbed " + str.tostring(100.0 * math.abs(_L.excDelta) / _L.excVol, "#") + "% one-sided" : ""))
+         ("Sweep " + f_src(_L) + (_L.excExact ? "" : " ~") + f_numtxt(_L))
          : "x no sweep\n(extreme retaken)"
     label.new(bar_index, _L.isLow ? low : high, txt,
          style = _L.isLow ? label.style_label_up : label.style_label_down,
@@ -180,6 +191,8 @@ if barstate.isconfirmed
         if lvls.size() > 0
             for j = lvls.size() - 1 to 0
                 if lvls.get(j).isPD
+                    if not na(lvls.get(j).lbl)
+                        label.delete(lvls.get(j).lbl)
                     lvls.remove(j)
         if not na(pdl)
             f_push(pdl, bar_index, true, true)
@@ -227,8 +240,12 @@ if barstate.isconfirmed and lvls.size() > 0
                 f_draw(L, false)
                 lvls.remove(j)
             else if closeBeyond
+                if not na(L.lbl)
+                    label.delete(L.lbl)
                 lvls.remove(j)          // BREAK: closed beyond -> not a sweep
             else if L.excBars + 1 > excMaxN
+                if not na(L.lbl)
+                    label.delete(L.lbl)
                 lvls.remove(j)          // too long beyond -> acceptance, no sweep
             else
                 // excursion bar (start, continuation, or re-entry below the
@@ -241,6 +258,16 @@ if barstate.isconfirmed and lvls.size() > 0
                 L.excExt   := L.isLow ? math.min(L.excExt, low) : math.max(L.excExt, high)
                 L.rest     := false
                 L.wait     := holdK
+                if holdK > 0
+                    // two-stage display: provisional label right at the
+                    // reclaim bar (numbers are final; only the hold is open)
+                    if not na(L.lbl)
+                        label.delete(L.lbl)
+                    L.lbl := label.new(bar_index, L.isLow ? low : high,
+                         "Sweep? " + f_src(L) + (L.excExact ? "" : " ~") + f_numtxt(L),
+                         style = L.isLow ? label.style_label_up : label.style_label_down,
+                         color = color.new(color.gray, 70), textcolor = color.new(color.white, 20),
+                         size = size.small)
                 if holdK == 0
                     // immediate mode: confirm on the reclaim bar itself
                     s = f_draw(L, true)

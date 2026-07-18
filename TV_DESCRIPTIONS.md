@@ -480,8 +480,13 @@ How it works:
   optionally, the prior-day high/low.
 - Sweep = up to N bars trading beyond the level (none closing beyond), then a
   reclaim, then K quiet bars that do not retake the excursion extreme. N and
-  K are inputs; confirmation therefore prints K bars after the reclaim by
-  design — that is the repaint-free price of the hold rule.
+  K are inputs.
+- Two-stage display: a gray "Sweep?" label appears right at the reclaim bar —
+  its volume numbers are already final (the excursion is measured), only the
+  hold is still open. After K bars it is upgraded to the solid confirmed
+  label, or grayed out with an "x" if the extreme was retaken. Nothing is
+  silently deleted, and the ALERT fires on confirmation only — that is the
+  repaint-free price of the hold rule.
 - A line connects the swept swing to the sweep, so you see WHICH liquidity
   was taken. Invalidated sweeps stay visible in gray (honest history).
 - Each confirmed sweep prints: excursion volume (futures contracts traded
