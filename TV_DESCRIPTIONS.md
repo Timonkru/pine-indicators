@@ -490,6 +490,17 @@ How it works:
   candles (volume real, side approximated — Pine has no order book). If the
   intrabar grids of chart and future differ, the tool falls back to full-bar
   volume and marks the value with "~".
+- Each label also shows the ABSORBED ratio: |delta| / volume of the excursion.
+  A high percentage means the aggression beyond the level was one-sided and
+  still failed (real absorption); a low percentage means two-way churn in the
+  wick — nobody was trapped.
+- SELF-SCORING: after every confirmed sweep the tool tracks the race "does
+  price travel an adjustable ATR-multiple beyond the swept level BEFORE the
+  excursion extreme is retaken?" and prints the running hit rate in the
+  status label — overall and for high-volume sweeps separately, measured on
+  your own chart and timeframe. A bar that hits both sides at once counts as
+  a fail (pessimistic by design). Most sweep tools cannot afford this
+  feature; this one shows you its own failure rate.
 - Solid label + alert when the sweep volume clears an adjustable multiple of
   average volume; gray label for low-volume sweeps. Auto-detected futures
   (DAX/GER40 -> FDAX, NAS100 -> NQ, US30 -> YM, UK100 -> Z, US500 -> ES),

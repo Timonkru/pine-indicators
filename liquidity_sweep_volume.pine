@@ -39,6 +39,11 @@ holdK    = input.int(2, "Confirmation: hold bars after reclaim (K)", minval = 0,
 confMult = input.float(1.5, "Strong sweep: excursion vol >= x * bar average", step = 0.1, group = "Sweep definition")
 volMALen = input.int(50, "Volume MA length", minval = 1, group = "Sweep definition")
 
+scoreOn  = input.bool(true, "Track sweep outcomes (self-scoring)", group = "Self-scoring",
+     tooltip = "After each confirmed sweep the tool tracks the race: does price travel the reversal target (x ATR beyond the swept level) BEFORE the excursion extreme is retaken? The running hit rate is shown in the status label — measured on THIS chart and timeframe. A bar that hits both in one bar counts as a fail (pessimistic).")
+revMult  = input.float(1.0, "Reversal target (x ATR)", step = 0.25, minval = 0.25, group = "Self-scoring")
+atrLenS  = input.int(14, "ATR length", minval = 5, group = "Self-scoring")
+
 f_detectFut() =>
     s = str.lower(syminfo.ticker) + " " + str.lower(syminfo.prefix) + " " + str.lower(syminfo.description)
     isNQ  = str.contains(s, "nas") or str.contains(s, "ndx") or str.contains(s, "us100") or str.contains(s, "ustec") or str.contains(s, "tech100") or str.contains(s, "nq1") or str.contains(s, "nq!")
@@ -100,6 +105,19 @@ type Lvl
 
 var array<Lvl> lvls = array.new<Lvl>()
 
+// --- self-scoring: open outcome races + running counters ---
+type Trk
+    bool  isLow
+    float ext      // excursion extreme (retake = fail)
+    float tgt      // reversal target (hit first = win)
+    bool  strong
+var array<Trk> trks = array.new<Trk>()
+var int nTot  = 0
+var int nWin  = 0
+var int nSTot = 0
+var int nSWin = 0
+atrV = ta.atr(atrLenS)
+
 f_push(_price, _birth, _isLow, _isPD) =>
     lvls.push(Lvl.new(_price, _birth, _isLow, _isPD, 0, _price, 0.0, 0.0, true, -1, false))
     // cap per side (oldest non-PD first)
@@ -131,7 +149,9 @@ f_draw(_L, _ok) =>
          ("Sweep " + (_L.isPD ? (_L.isLow ? "PDL" : "PDH") : (_L.isLow ? "low" : "high"))
           + (_L.excExact ? "" : " ~")
           + "\nVol " + f_fmt(_L.excVol) + " (" + str.tostring(rvol, "#.##") + "x)"
-          + (_L.excExact ? "\nDelta " + (_L.excDelta > 0 ? "+" : "") + f_fmt(_L.excDelta) : ""))
+          + (_L.excExact ? "\nDelta " + (_L.excDelta > 0 ? "+" : "") + f_fmt(_L.excDelta) : "")
+          + (_L.excExact and _L.excVol > 0 ?
+             "\nAbsorbed " + str.tostring(100.0 * math.abs(_L.excDelta) / _L.excVol, "#") + "% one-sided" : ""))
          : "x no sweep\n(extreme retaken)"
     label.new(bar_index, _L.isLow ? low : high, txt,
          style = _L.isLow ? label.style_label_up : label.style_label_down,
@@ -139,6 +159,9 @@ f_draw(_L, _ok) =>
               : strong ? color.new(_L.isLow ? color.teal : color.red, 15)
               : color.new(color.gray, 45),
          textcolor = color.white, size = size.small)
+    if _ok and scoreOn
+        trks.push(Trk.new(_L.isLow, _L.excExt,
+             _L.isLow ? _L.price + revMult * atrV : _L.price - revMult * atrV, strong))
     _ok and strong
 
 // --- new reference levels ---
@@ -162,6 +185,29 @@ if barstate.isconfirmed
             f_push(pdl, bar_index, true, true)
         if not na(pdh)
             f_push(pdh, bar_index, false, true)
+
+// --- self-scoring: resolve open races BEFORE new confirmations this bar ---
+// Pessimistic tie rule: if one bar hits target AND retakes the extreme, it
+// counts as a fail (consistent with conservative bar-logic backtesting).
+if scoreOn and barstate.isconfirmed and trks.size() > 0
+    for j = trks.size() - 1 to 0
+        T = trks.get(j)
+        lost = T.isLow ? low < T.ext : high > T.ext
+        won  = T.isLow ? high >= T.tgt : low <= T.tgt
+        if lost
+            nTot += 1
+            if T.strong
+                nSTot += 1
+            trks.remove(j)
+        else if won
+            nTot += 1
+            nWin += 1
+            if T.strong
+                nSTot += 1
+                nSWin += 1
+            trks.remove(j)
+if trks.size() > 50
+    trks.shift()
 
 // --- state machine per level ---
 bool confLow  = false
@@ -227,5 +273,11 @@ if barstate.islast
          + "\nSweep = <=" + str.tostring(excMaxN) + " bars beyond, no close beyond, held "
          + str.tostring(holdK) + " bars"
          + "\nExcursion volume from " + ltf + "-min bars; ~ = full-bar fallback"
+         + (scoreOn ? (nTot >= 10 ?
+             "\nReversed " + str.tostring(revMult, "#.##") + " ATR before retake: "
+             + str.tostring(100.0 * nWin / nTot, "#") + "% of " + str.tostring(nTot)
+             + (nSTot >= 5 ? " | strong: " + str.tostring(100.0 * nSWin / nSTot, "#")
+                + "% of " + str.tostring(nSTot) : "")
+             : "\nOutcome stats: collecting (n=" + str.tostring(nTot) + ")") : "")
     label.new(bar_index, close, txt, style = label.style_label_left,
          color = color.new(color.black, 20), textcolor = color.white, size = size.small)
