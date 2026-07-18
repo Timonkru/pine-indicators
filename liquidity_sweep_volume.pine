@@ -1,0 +1,164 @@
+//@version=6
+// LIQUIDITY SWEEP VOLUME — sweeps quantified with REAL futures contract volume.
+// A sweep (stop hunt / liquidity grab) is a wick through a reference level that
+// closes back inside. Most tools only MARK them; this one measures them:
+//   - how many futures contracts traded during the excursion beyond the level
+//   - the buy/sell delta of that excursion (was the aggression absorbed?)
+//   - the sweep volume relative to average bar volume (x RVOL)
+// The chart's broker tick volume is NEVER used. Excursion minutes are located
+// on THIS chart's lower-timeframe bars (CFD price vs CFD level — no basis
+// mixing); the volume of exactly those minutes comes from the auto-detected
+// futures contract. If the minute grids differ (futures closed part of the
+// bar), the tool falls back to the full-bar futures volume and marks it "~".
+// Reading (matches the research this grew from: a sweep without volume is no
+// sweep): heavy sweep volume + one-sided delta + reclaim = real absorption at
+// the level; tiny sweep volume = empty fishing, nobody was caught.
+// Sibling tools: futures_volume_delta / vwap / twap / volume profile / OBs.
+indicator("Liquidity Sweep Volume — CFD Charts", shorttitle = "Sweep Vol", overlay = true, max_labels_count = 100)
+
+volMode  = input.string("Futures symbol", "Volume source",
+     options = ["Chart (native)", "Futures symbol"], group = "Volume",
+     tooltip = "Futures = real exchange volume via request.security. Chart = this chart's own volume (only sensible on a native futures chart).")
+autoFut  = input.bool(true, "Auto-detect futures symbol", group = "Volume")
+futMan   = input.symbol("EUREX:FDAX1!", "…manual otherwise", group = "Volume")
+ltfMode  = input.string("Auto", "Intrabar resolution",
+     options = ["Auto", "1 minute", "5 minutes", "15 minutes"], group = "Volume")
+
+pivLen   = input.int(15, "Pivot length (left/right)", minval = 2, group = "Levels",
+     tooltip = "Swing highs/lows confirmed after this many bars become sweepable reference levels.")
+usePD    = input.bool(true, "Also watch prior-day high/low", group = "Levels")
+maxLvls  = input.int(8, "Max active levels per side", minval = 1, maxval = 20, group = "Levels")
+
+confMult = input.float(1.5, "Confirmed sweep: volume >= x * bar average", step = 0.1, group = "Sweeps",
+     tooltip = "Sweeps at or above this relative volume fire the alert and get a solid label. Below = hollow label (empty fishing).")
+volMALen = input.int(50, "Volume MA length", minval = 1, group = "Sweeps")
+
+f_detectFut() =>
+    s = str.lower(syminfo.ticker) + " " + str.lower(syminfo.prefix) + " " + str.lower(syminfo.description)
+    isNQ  = str.contains(s, "nas") or str.contains(s, "ndx") or str.contains(s, "us100") or str.contains(s, "ustec") or str.contains(s, "tech100") or str.contains(s, "nq1") or str.contains(s, "nq!")
+    isYM  = str.contains(s, "dow") or str.contains(s, "us30") or str.contains(s, "dji") or str.contains(s, "ym1") or str.contains(s, "ym!") or str.contains(s, "wall street")
+    isDAX = str.contains(s, "dax") or str.contains(s, "ger40") or str.contains(s, "de40") or str.contains(s, "german")
+    isFTSE = str.contains(s, "ftse") or str.contains(s, "uk100") or str.contains(s, "ukx")
+    isES  = str.contains(s, "us500") or str.contains(s, "sp500") or str.contains(s, "spx") or str.contains(s, "s&p") or str.contains(s, "es1") or str.contains(s, "es!")
+    isDAX ? "EUREX:FDAX1!" : isFTSE ? "ICEEUR:Z1!" : isNQ ? "CME_MINI:NQ1!" :
+     isYM ? "CBOT_MINI:YM1!" : isES ? "CME_MINI:ES1!" : syminfo.tickerid
+
+futSym = autoFut ? f_detectFut() : futMan
+useFut = volMode == "Futures symbol"
+
+futVol = request.security(futSym, timeframe.period, volume, ignore_invalid_symbol = true)
+vol    = useFut ? futVol : volume
+volMA  = ta.sma(nz(vol), volMALen)
+
+autoLtf = timeframe.isintraday and timeframe.multiplier <= 5 ? "1" :
+     timeframe.isintraday and timeframe.multiplier <= 60 ? "5" : "15"
+ltf = ltfMode == "1 minute" ? "1" : ltfMode == "5 minutes" ? "5" :
+     ltfMode == "15 minutes" ? "15" : autoLtf
+
+// Intrabar data: excursion mask from THIS chart (CFD prices vs CFD level),
+// volume + direction from the futures contract's minutes.
+[cLo, cHi] = request.security_lower_tf(syminfo.tickerid, ltf, [low, high])
+[fO, fC, fV] = request.security_lower_tf(useFut ? futSym : syminfo.tickerid,
+     ltf, [open, close, volume], ignore_invalid_symbol = true)
+
+// Volume (and delta) of the intrabar minutes beyond the level.
+// Returns [beyondVol, beyondDelta, exact] — exact=false -> full-bar fallback.
+f_beyond(_level, _below) =>
+    float bv = 0.0
+    float bd = 0.0
+    bool ok = not na(cLo) and not na(fV) and cLo.size() > 0 and cLo.size() == fV.size()
+    if ok
+        for i = 0 to cLo.size() - 1
+            hit = _below ? cLo.get(i) < _level : cHi.get(i) > _level
+            if hit
+                v_i = nz(fV.get(i))
+                bv += v_i
+                bd += nz(fC.get(i)) >= nz(fO.get(i)) ? v_i : -v_i
+    if not ok
+        bv := nz(vol)
+        bd := 0.0
+    [bv, bd, ok]
+
+// --- reference levels: confirmed swing pivots + optional prior-day H/L ---
+pLo = ta.pivotlow(pivLen, pivLen)
+pHi = ta.pivothigh(pivLen, pivLen)
+var array<float> lowLvls  = array.new<float>()
+var array<float> highLvls = array.new<float>()
+if not na(pLo)
+    lowLvls.push(pLo)
+    if lowLvls.size() > maxLvls
+        lowLvls.shift()
+if not na(pHi)
+    highLvls.push(pHi)
+    if highLvls.size() > maxLvls
+        highLvls.shift()
+
+pdh = request.security(syminfo.tickerid, "D", high[1], lookahead = barmerge.lookahead_on)
+pdl = request.security(syminfo.tickerid, "D", low[1],  lookahead = barmerge.lookahead_on)
+var bool pdlDone = false
+var bool pdhDone = false
+if timeframe.change("D")
+    pdlDone := false
+    pdhDone := false
+
+f_fmt(_v) =>
+    math.abs(_v) >= 1e6 ? str.tostring(_v / 1e6, "#.#") + "M" :
+     math.abs(_v) >= 1e3 ? str.tostring(_v / 1e3, "#.#") + "K" :
+     str.tostring(_v, "#")
+
+f_mark(_low, _level, _src) =>
+    [bv, bd, ok] = f_beyond(_level, _low)
+    rvol = volMA > 0 ? bv / volMA : 0.0
+    strong = rvol >= confMult
+    txt = (_low ? "Sweep " : "Sweep ") + _src + (ok ? "" : " ~")
+         + "\nVol " + f_fmt(bv) + " (" + str.tostring(rvol, "#.##") + "x)"
+         + (ok ? "\nDelta " + (bd > 0 ? "+" : "") + f_fmt(bd) : "")
+    label.new(bar_index, _low ? low : high, txt,
+         style = _low ? label.style_label_up : label.style_label_down,
+         color = strong ? color.new(_low ? color.teal : color.red, 15)
+                        : color.new(color.gray, 55),
+         textcolor = color.white, size = size.small)
+    strong
+
+bool sweptLowStrong  = false
+bool sweptHighStrong = false
+if barstate.isconfirmed
+    // pivot lows: sweep = trade below, close back above; break = close below
+    if lowLvls.size() > 0
+        for j = lowLvls.size() - 1 to 0
+            L = lowLvls.get(j)
+            if low < L and close > L
+                s = f_mark(true, L, "low")
+                sweptLowStrong := sweptLowStrong or s
+                lowLvls.remove(j)
+            else if close < L
+                lowLvls.remove(j)
+    if highLvls.size() > 0
+        for j = highLvls.size() - 1 to 0
+            H = highLvls.get(j)
+            if high > H and close < H
+                s = f_mark(false, H, "high")
+                sweptHighStrong := sweptHighStrong or s
+                highLvls.remove(j)
+            else if close > H
+                highLvls.remove(j)
+    if usePD and not pdlDone and not na(pdl) and low < pdl and close > pdl
+        s = f_mark(true, pdl, "PDL")
+        sweptLowStrong := sweptLowStrong or s
+        pdlDone := true
+    if usePD and not pdhDone and not na(pdh) and high > pdh and close < pdh
+        s = f_mark(false, pdh, "PDH")
+        sweptHighStrong := sweptHighStrong or s
+        pdhDone := true
+
+alertcondition(sweptLowStrong,  "Volume-confirmed low sweep",
+     "Low swept on above-average real futures volume (reclaim closed back above)")
+alertcondition(sweptHighStrong, "Volume-confirmed high sweep",
+     "High swept on above-average real futures volume (reclaim closed back below)")
+
+if barstate.islast
+    txt = (useFut ? "Futures volume: " + futSym + (na(futVol) ? " (NO DATA)" : " ✓")
+                  : "Chart volume (native)")
+         + "\nExcursion volume from " + ltf + "-min bars; ~ = full-bar fallback"
+    label.new(bar_index, close, txt, style = label.style_label_left,
+         color = color.new(color.black, 20), textcolor = color.white, size = size.small)

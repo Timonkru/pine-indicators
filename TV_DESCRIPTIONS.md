@@ -24,6 +24,7 @@ bewusst deutsch/privat — statische Tageswerte sind ohnehin nicht publizierbar
 | Futures-Session-TWAP | **Futures Session TWAP + Bands — CFD Charts** |
 | Futures-Vol-Delta | **Futures Volume + Delta — CFD Charts** |
 | Vol-Confirmed OBs | **Volume-Confirmed Order Blocks — CFD Charts** |
+| Sweep-Volumen | **Liquidity Sweep Volume — CFD Charts** |
 | Kasse Alerts | **Session Candle Levels & Alerts — Intraday** |
 | Kasse Swing | **Session Candle Levels & Alerts — Weekly Swing** |
 | Fisher ACD | **Opening Range ACD + Pivot Ranges — Label-Free** |
@@ -451,6 +452,55 @@ volume tools — the companions are on my profile.*
 
 ---
 
+## 11) Liquidity Sweep Volume — CFD Charts
+
+**Titel:** Liquidity Sweep Volume — CFD Charts
+
+**Beschreibung (Copy-Paste):**
+
+A liquidity-sweep detector that does not just mark the wick — it measures it:
+how many REAL futures contracts traded beyond the swept level, with what
+buy/sell delta, and how that compares to average volume.
+
+What makes it original: sweep indicators usually paint every wick through a
+swing point. This one quantifies each sweep with the exchange volume of the
+auto-detected futures contract (the chart's broker tick volume is never used).
+The excursion minutes are located on this chart's own lower-timeframe prices
+(CFD price against CFD level — no futures/cash basis mixing), and the volume
+of exactly those minutes is taken from the futures contract. A sweep on heavy
+volume with one-sided delta that still closes back inside is measured
+absorption; a sweep on tiny volume is empty fishing that caught nobody — the
+label tells you which one you are looking at.
+
+How it works:
+- Reference levels: confirmed swing highs/lows (pivot length adjustable) and,
+  optionally, the prior-day high/low.
+- Sweep = the level is traded through but the bar closes back inside. A close
+  beyond the level instead consumes it as a normal break (no sweep).
+- Each sweep prints: excursion volume (futures contracts traded beyond the
+  level), its ratio to average bar volume, and the excursion delta estimated
+  from the futures lower-timeframe candles (volume real, side approximated —
+  Pine has no order book).
+- Solid label + alert when the sweep volume clears an adjustable multiple of
+  average volume; hollow gray label for low-volume sweeps. If the intrabar
+  grids of chart and future differ, the tool falls back to full-bar volume
+  and marks the value with "~".
+- Auto-detected futures (DAX/GER40 -> FDAX, NAS100 -> NQ, US30 -> YM,
+  UK100 -> Z, US500 -> ES), manual override, status label.
+
+How to use it: treat high-volume sweeps with a reclaim as measured absorption
+at the level — the classic stop-hunt-then-reverse context, now with a number
+attached instead of a guess. Low-volume sweeps are cosmetic wicks; fading them
+has no participation behind it. The delta adds the direction of the trapped
+side: a low swept on heavy selling that closes back above means aggressive
+sellers were absorbed below the level. Delayed futures feeds confirm labels a
+few minutes late; history is complete.
+
+*This script is part of a consistent set of open-source session, range and
+volume tools — the companions are on my profile.*
+
+---
+
 ## Kategorien & Tags (beim Publizieren)
 
 Kategorie = TV-Dropdown (fix; nächstliegenden nehmen, falls Name abweicht).
@@ -463,6 +513,7 @@ Tags = Freitext, klein, ohne Brand/Personennamen.
 | Futures Session TWAP + Bands | VWAP (sonst Volume) | twap, vwap, futures, cfd, sessions, bands, standarddeviation, meanreversion, execution, intraday |
 | Futures Volume + Delta | Volume | volume, volumedelta, futures, cfd, absorption, orderflow, footprint, exhaustion, intraday |
 | Volume-Confirmed Order Blocks | Support and Resistance | orderblock, smartmoney, futures, volume, cfd, supplydemand, mitigation, breakout, intraday |
+| Liquidity Sweep Volume | Support and Resistance | liquiditysweep, stophunt, sweep, futures, volume, absorption, wick, reversal, smartmoney, intraday |
 | Session Candle Levels — Intraday | Support and Resistance | sessions, intraday, daytrading, breakout, alerts, keylevels, premarket, fomc, indices |
 | Session Candle Levels — Weekly Swing | Support and Resistance | swingtrading, weeklylevels, monthlylevels, cot, breakout, alerts, keylevels |
 | Opening Range ACD + Pivot Ranges | Pivot points and levels | acd, openingrange, orb, pivotrange, breakout, daytrading, bias, daytradingsystem |
