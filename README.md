@@ -15,6 +15,8 @@ All overlays, Pine v6, mostly label-free (signals read from color / geometry).
 | `future_volume_profile.pine` | Futures volume profile on any chart (POC / VA / HVN-LVN) | *new — not yet published* |
 | `vwap_stdev_futurevol.pine` | VWAP + StdDev bands, real futures volume | *new — not yet published* |
 | `twap_futurevol.pine` | TWAP + bands, futures-session gated, VWAP-spread readout | *new — not yet published* |
+| `futures_volume_delta.pine` | Futures volume pane + buy/sell delta + absorption flags | *new — not yet published* |
+| `volume_confirmed_orderblocks.pine` | Order blocks validated by real futures volume | *new — not yet published* |
 | `gamma_exposure_profile.pine` | GEX profile from a manually pasted option chain (flip, walls) | *new — not yet published* |
 
 ## Real futures volume on CFDs / cash indices

@@ -22,6 +22,8 @@ bewusst deutsch/privat — statische Tageswerte sind ohnehin nicht publizierbar
 | Futures-Vol-Profil | **Futures Volume Profile — CFD Charts** |
 | Futures-Vol-VWAP | **Futures Volume VWAP + Bands — CFD Charts** |
 | Futures-Session-TWAP | **Futures Session TWAP + Bands — CFD Charts** |
+| Futures-Vol-Delta | **Futures Volume + Delta — CFD Charts** |
+| Vol-Confirmed OBs | **Volume-Confirmed Order Blocks — CFD Charts** |
 | Kasse Alerts | **Session Candle Levels & Alerts — Intraday** |
 | Kasse Swing | **Session Candle Levels & Alerts — Weekly Swing** |
 | Fisher ACD | **Opening Range ACD + Pivot Ranges — Label-Free** |
@@ -365,6 +367,90 @@ volume tools — the companions are on my profile.*
 
 ---
 
+## 9) Futures Volume + Delta — CFD Charts
+
+**Titel:** Futures Volume + Delta — CFD Charts
+
+**Beschreibung (Copy-Paste):**
+
+A volume pane for CFD and cash-index charts that shows the REAL traded volume
+of the matching futures contract — plus an estimated buy/sell delta and
+absorption flags for effort-without-result bars.
+
+What makes it original: CFD "volume" is broker tick count, not market
+participation. This pane never uses it — every column is the exchange volume
+of the auto-detected futures contract. The delta column is built from the
+futures contract's own lower-timeframe candles (up-candle volume counts as
+buying, down-candle volume as selling): the volume is real, only the side
+attribution is an estimate, and it is labeled as such. Absorption flags then
+combine both axes — volume percentile high while the price range percentile is
+low — the candle-data footprint that hidden passive interest (iceberg-style
+execution) leaves behind. Pine has no order book, so this is explicitly a
+footprint proxy, not order-book detection.
+
+How it works:
+- The futures contract is auto-detected from the chart symbol (DAX/GER40 ->
+  FDAX, NAS100 -> NQ, US30 -> YM, UK100 -> Z, US500 -> ES), or set manually.
+- Histogram = futures volume per chart bar; columns tint with bar direction,
+  a configurable MA marks the average.
+- Delta = buy-minus-sell futures volume from 1/5/15-minute intrabars
+  (auto-selected by chart timeframe, manual override). Lower-timeframe
+  history is limited, so the delta reaches less far back than the histogram.
+- Absorption flag (orange diamond + alert): volume percentile >= X and range
+  percentile <= Y over a rolling lookback — both thresholds adjustable.
+- A status label confirms the active source and the delta resolution.
+
+How to use it: read it like a footprint-lite. Rising price on rising futures
+volume = participation confirms the move. An absorption diamond after an
+extended run — heavy contracts traded, no price progress — marks where passive
+interest is absorbing the aggression; combined with a one-sided delta it is a
+common exhaustion/iceberg footprint. Delayed futures feeds confirm bars a few
+minutes late; the historical picture is complete.
+
+*This script is part of a consistent set of open-source session, range and
+volume tools — the companions are on my profile.*
+
+---
+
+## 10) Volume-Confirmed Order Blocks — CFD Charts
+
+**Titel:** Volume-Confirmed Order Blocks — CFD Charts
+
+**Beschreibung (Copy-Paste):**
+
+Order-block zones for CFD and cash-index charts — kept only when the impulse
+that created them carried above-average REAL futures volume.
+
+What makes it original: classic order-block tools mark every last opposite
+candle before a fast move, which paints charts full of untested zones. This
+one validates the impulse against the exchange volume of the auto-detected
+futures contract (never the CFD's tick volume): a zone only exists where real
+contracts changed hands. Price coordinates stay this chart's prices — only the
+volume is borrowed, so the futures-vs-cash basis cannot shift a zone.
+
+How it works:
+- Impulse = candle range > k x ATR with a decisive body (both adjustable).
+- The last opposite candle within a few bars before the impulse becomes the
+  order block; its high/low span the zone.
+- Volume confirmation: the impulse candle needs >= x times the average
+  futures volume (set the multiplier to 0 for classic, unfiltered blocks).
+- Zones extend right until price closes through the far side (mitigation),
+  then they are removed; the number of kept zones is capped.
+- Label-free chart output — zones read from color and geometry alone. Alerts
+  fire on new bullish/bearish zones.
+
+How to use it: treat the zones as inventory areas of real participation —
+pullbacks into a fresh volume-confirmed zone are the classic retest context,
+a close through the far side invalidates it (and removes it from the chart).
+The volume filter is the quality dial: raise the multiplier to keep only the
+zones where the futures market genuinely committed. Delayed futures feeds
+confirm new zones a few minutes late; history is complete.
+
+*This script is part of a consistent set of open-source session, range and
+volume tools — the companions are on my profile.*
+
+---
+
 ## Kategorien & Tags (beim Publizieren)
 
 Kategorie = TV-Dropdown (fix; nächstliegenden nehmen, falls Name abweicht).
@@ -375,6 +461,8 @@ Tags = Freitext, klein, ohne Brand/Personennamen.
 | Futures Volume Profile | Volume | volumeprofile, futures, cfd, poc, valuearea, sessions, dax, nasdaq, orderflow |
 | Futures Volume VWAP + Bands | VWAP (sonst Volume) | vwap, futures, cfd, volume, bands, standarddeviation, meanreversion, intraday |
 | Futures Session TWAP + Bands | VWAP (sonst Volume) | twap, vwap, futures, cfd, sessions, bands, standarddeviation, meanreversion, execution, intraday |
+| Futures Volume + Delta | Volume | volume, volumedelta, futures, cfd, absorption, orderflow, footprint, exhaustion, intraday |
+| Volume-Confirmed Order Blocks | Support and Resistance | orderblock, smartmoney, futures, volume, cfd, supplydemand, mitigation, breakout, intraday |
 | Session Candle Levels — Intraday | Support and Resistance | sessions, intraday, daytrading, breakout, alerts, keylevels, premarket, fomc, indices |
 | Session Candle Levels — Weekly Swing | Support and Resistance | swingtrading, weeklylevels, monthlylevels, cot, breakout, alerts, keylevels |
 | Opening Range ACD + Pivot Ranges | Pivot points and levels | acd, openingrange, orb, pivotrange, breakout, daytrading, bias, daytradingsystem |
