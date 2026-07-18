@@ -1,20 +1,24 @@
 //@version=6
 // LIQUIDITY SWEEP VOLUME — sweeps quantified with REAL futures contract volume.
-// A sweep (stop hunt / liquidity grab) is a wick through a reference level that
-// closes back inside. Most tools only MARK them; this one measures them:
-//   - how many futures contracts traded during the excursion beyond the level
-//   - the buy/sell delta of that excursion (was the aggression absorbed?)
-//   - the sweep volume relative to average bar volume (x RVOL)
-// The chart's broker tick volume is NEVER used. Excursion minutes are located
-// on THIS chart's lower-timeframe bars (CFD price vs CFD level — no basis
-// mixing); the volume of exactly those minutes comes from the auto-detected
-// futures contract. If the minute grids differ (futures closed part of the
-// bar), the tool falls back to the full-bar futures volume and marks it "~".
-// Reading (matches the research this grew from: a sweep without volume is no
-// sweep): heavy sweep volume + one-sided delta + reclaim = real absorption at
-// the level; tiny sweep volume = empty fishing, nobody was caught.
-// Sibling tools: futures_volume_delta / vwap / twap / volume profile / OBs.
-indicator("Liquidity Sweep Volume — CFD Charts", shorttitle = "Sweep Vol", overlay = true, max_labels_count = 100)
+// SWEEP DEFINITION (v2, deliberately strict):
+//   1. Reference = confirmed swing high/low (pivot) or prior-day high/low.
+//   2. EXCURSION: price trades beyond the level for up to N bars. NO bar may
+//      CLOSE beyond the level — a close beyond is a BREAK, not a sweep (who
+//      can close beyond was not fished, he broke out). Longer than N bars
+//      beyond = no sweep either (acceptance, not a grab).
+//   3. RECLAIM: the excursion ends when price stops trading beyond the level.
+//   4. CONFIRMATION: the next K bars must NOT take out the excursion extreme.
+//      If they do, the sweep is INVALIDATED — it stays on the chart, grayed
+//      (honest display: it looked like a sweep and was not one).
+// MEASUREMENT: futures contracts traded during the excursion minutes beyond
+// the level (mask on THIS chart's intrabar prices — CFD level vs CFD price,
+// no basis mixing; volume/delta from the auto-detected futures contract).
+// The chart's broker tick volume is NEVER used. Delta side is estimated from
+// intrabar direction (no order book in Pine) and labeled as an estimate.
+// Confirmation is inherently K bars late — that is the repaint-free price of
+// rule 4, not a defect. Sibling tools: futures_volume_delta / vwap / twap /
+// volume profile / volume-confirmed order blocks.
+indicator("Liquidity Sweep Volume — CFD Charts", shorttitle = "Sweep Vol", overlay = true, max_labels_count = 100, max_lines_count = 100)
 
 volMode  = input.string("Futures symbol", "Volume source",
      options = ["Chart (native)", "Futures symbol"], group = "Volume",
@@ -24,14 +28,16 @@ futMan   = input.symbol("EUREX:FDAX1!", "…manual otherwise", group = "Volume")
 ltfMode  = input.string("Auto", "Intrabar resolution",
      options = ["Auto", "1 minute", "5 minutes", "15 minutes"], group = "Volume")
 
-pivLen   = input.int(15, "Pivot length (left/right)", minval = 2, group = "Levels",
-     tooltip = "Swing highs/lows confirmed after this many bars become sweepable reference levels.")
+pivLen   = input.int(15, "Pivot length (left/right)", minval = 2, group = "Levels")
 usePD    = input.bool(true, "Also watch prior-day high/low", group = "Levels")
 maxLvls  = input.int(8, "Max active levels per side", minval = 1, maxval = 20, group = "Levels")
 
-confMult = input.float(1.5, "Confirmed sweep: volume >= x * bar average", step = 0.1, group = "Sweeps",
-     tooltip = "Sweeps at or above this relative volume fire the alert and get a solid label. Below = hollow label (empty fishing).")
-volMALen = input.int(50, "Volume MA length", minval = 1, group = "Sweeps")
+excMaxN  = input.int(3, "Max excursion bars beyond the level (N)", minval = 1, maxval = 10, group = "Sweep definition",
+     tooltip = "Price may trade beyond the level for at most N bars. Longer = acceptance, not a sweep.")
+holdK    = input.int(2, "Confirmation: hold bars after reclaim (K)", minval = 0, maxval = 10, group = "Sweep definition",
+     tooltip = "The next K bars must not take out the excursion extreme, otherwise the sweep is invalidated (shown grayed). Labels/alerts fire K bars after the reclaim by design.")
+confMult = input.float(1.5, "Strong sweep: excursion vol >= x * bar average", step = 0.1, group = "Sweep definition")
+volMALen = input.int(50, "Volume MA length", minval = 1, group = "Sweep definition")
 
 f_detectFut() =>
     s = str.lower(syminfo.ticker) + " " + str.lower(syminfo.prefix) + " " + str.lower(syminfo.description)
@@ -55,14 +61,12 @@ autoLtf = timeframe.isintraday and timeframe.multiplier <= 5 ? "1" :
 ltf = ltfMode == "1 minute" ? "1" : ltfMode == "5 minutes" ? "5" :
      ltfMode == "15 minutes" ? "15" : autoLtf
 
-// Intrabar data: excursion mask from THIS chart (CFD prices vs CFD level),
-// volume + direction from the futures contract's minutes.
+// Intrabar data: excursion mask from THIS chart, volume from the future.
 [cLo, cHi] = request.security_lower_tf(syminfo.tickerid, ltf, [low, high])
 [fO, fC, fV] = request.security_lower_tf(useFut ? futSym : syminfo.tickerid,
      ltf, [open, close, volume], ignore_invalid_symbol = true)
 
-// Volume (and delta) of the intrabar minutes beyond the level.
-// Returns [beyondVol, beyondDelta, exact] — exact=false -> full-bar fallback.
+// Beyond-level volume/delta of THIS bar. exact=false -> full-bar fallback.
 f_beyond(_level, _below) =>
     float bv = 0.0
     float bd = 0.0
@@ -79,86 +83,149 @@ f_beyond(_level, _below) =>
         bd := 0.0
     [bv, bd, ok]
 
-// --- reference levels: confirmed swing pivots + optional prior-day H/L ---
-pLo = ta.pivotlow(pivLen, pivLen)
-pHi = ta.pivothigh(pivLen, pivLen)
-var array<float> lowLvls  = array.new<float>()
-var array<float> highLvls = array.new<float>()
-if not na(pLo)
-    lowLvls.push(pLo)
-    if lowLvls.size() > maxLvls
-        lowLvls.shift()
-if not na(pHi)
-    highLvls.push(pHi)
-    if highLvls.size() > maxLvls
-        highLvls.shift()
+// --- level state (one object per watched swing / prior-day level) ---
+type Lvl
+    float price
+    int   birth      // bar index of the swing (line start)
+    bool  isLow      // true = low level (sweep below), false = high level
+    bool  isPD       // prior-day level (refreshed daily)
+    int   excBars    // bars spent beyond the level (0 = idle)
+    float excExt     // excursion extreme so far
+    float excVol     // accumulated futures volume beyond the level
+    float excDelta   // accumulated delta beyond the level
+    bool  excExact   // false if any bar used the full-bar fallback
+    int   wait       // remaining confirmation bars (-1 = not in confirmation)
+    bool  rest       // true once a bar after the reclaim stayed inside
+                     // (distinguishes excursion continuation from re-take)
 
-pdh = request.security(syminfo.tickerid, "D", high[1], lookahead = barmerge.lookahead_on)
-pdl = request.security(syminfo.tickerid, "D", low[1],  lookahead = barmerge.lookahead_on)
-var bool pdlDone = false
-var bool pdhDone = false
-if timeframe.change("D")
-    pdlDone := false
-    pdhDone := false
+var array<Lvl> lvls = array.new<Lvl>()
+
+f_push(_price, _birth, _isLow, _isPD) =>
+    lvls.push(Lvl.new(_price, _birth, _isLow, _isPD, 0, _price, 0.0, 0.0, true, -1, false))
+    // cap per side (oldest non-PD first)
+    int nSide = 0
+    for i = 0 to lvls.size() - 1
+        if lvls.get(i).isLow == _isLow
+            nSide += 1
+    if nSide > maxLvls
+        for i = 0 to lvls.size() - 1
+            L = lvls.get(i)
+            if L.isLow == _isLow and not L.isPD
+                lvls.remove(i)
+                break
 
 f_fmt(_v) =>
     math.abs(_v) >= 1e6 ? str.tostring(_v / 1e6, "#.#") + "M" :
      math.abs(_v) >= 1e3 ? str.tostring(_v / 1e3, "#.#") + "K" :
      str.tostring(_v, "#")
 
-f_mark(_low, _level, _src) =>
-    [bv, bd, ok] = f_beyond(_level, _low)
-    rvol = volMA > 0 ? bv / volMA : 0.0
+f_draw(_L, _ok) =>
+    // reference line: from the swing that provided the liquidity to here
+    lc = _ok ? (_L.isLow ? color.new(color.teal, 25) : color.new(color.red, 25))
+             : color.new(color.gray, 60)
+    line.new(_L.birth, _L.price, bar_index, _L.price, color = lc,
+         width = _ok ? 2 : 1, style = _ok ? line.style_solid : line.style_dashed)
+    rvol = volMA > 0 ? _L.excVol / volMA : 0.0
     strong = rvol >= confMult
-    txt = (_low ? "Sweep " : "Sweep ") + _src + (ok ? "" : " ~")
-         + "\nVol " + f_fmt(bv) + " (" + str.tostring(rvol, "#.##") + "x)"
-         + (ok ? "\nDelta " + (bd > 0 ? "+" : "") + f_fmt(bd) : "")
-    label.new(bar_index, _low ? low : high, txt,
-         style = _low ? label.style_label_up : label.style_label_down,
-         color = strong ? color.new(_low ? color.teal : color.red, 15)
-                        : color.new(color.gray, 55),
+    txt = _ok ?
+         ("Sweep " + (_L.isPD ? (_L.isLow ? "PDL" : "PDH") : (_L.isLow ? "low" : "high"))
+          + (_L.excExact ? "" : " ~")
+          + "\nVol " + f_fmt(_L.excVol) + " (" + str.tostring(rvol, "#.##") + "x)"
+          + (_L.excExact ? "\nDelta " + (_L.excDelta > 0 ? "+" : "") + f_fmt(_L.excDelta) : ""))
+         : "x no sweep\n(extreme retaken)"
+    label.new(bar_index, _L.isLow ? low : high, txt,
+         style = _L.isLow ? label.style_label_up : label.style_label_down,
+         color = not _ok ? color.new(color.gray, 65)
+              : strong ? color.new(_L.isLow ? color.teal : color.red, 15)
+              : color.new(color.gray, 45),
          textcolor = color.white, size = size.small)
-    strong
+    _ok and strong
 
-bool sweptLowStrong  = false
-bool sweptHighStrong = false
+// --- new reference levels ---
+pLo = ta.pivotlow(pivLen, pivLen)
+pHi = ta.pivothigh(pivLen, pivLen)
+pdh = request.security(syminfo.tickerid, "D", high[1], lookahead = barmerge.lookahead_on)
+pdl = request.security(syminfo.tickerid, "D", low[1],  lookahead = barmerge.lookahead_on)
+
 if barstate.isconfirmed
-    // pivot lows: sweep = trade below, close back above; break = close below
-    if lowLvls.size() > 0
-        for j = lowLvls.size() - 1 to 0
-            L = lowLvls.get(j)
-            if low < L and close > L
-                s = f_mark(true, L, "low")
-                sweptLowStrong := sweptLowStrong or s
-                lowLvls.remove(j)
-            else if close < L
-                lowLvls.remove(j)
-    if highLvls.size() > 0
-        for j = highLvls.size() - 1 to 0
-            H = highLvls.get(j)
-            if high > H and close < H
-                s = f_mark(false, H, "high")
-                sweptHighStrong := sweptHighStrong or s
-                highLvls.remove(j)
-            else if close > H
-                highLvls.remove(j)
-    if usePD and not pdlDone and not na(pdl) and low < pdl and close > pdl
-        s = f_mark(true, pdl, "PDL")
-        sweptLowStrong := sweptLowStrong or s
-        pdlDone := true
-    if usePD and not pdhDone and not na(pdh) and high > pdh and close < pdh
-        s = f_mark(false, pdh, "PDH")
-        sweptHighStrong := sweptHighStrong or s
-        pdhDone := true
+    if not na(pLo)
+        f_push(pLo, bar_index - pivLen, true, false)
+    if not na(pHi)
+        f_push(pHi, bar_index - pivLen, false, false)
+    if usePD and timeframe.change("D")
+        // refresh prior-day levels (drop old PD entries first)
+        if lvls.size() > 0
+            for j = lvls.size() - 1 to 0
+                if lvls.get(j).isPD
+                    lvls.remove(j)
+        if not na(pdl)
+            f_push(pdl, bar_index, true, true)
+        if not na(pdh)
+            f_push(pdh, bar_index, false, true)
 
-alertcondition(sweptLowStrong,  "Volume-confirmed low sweep",
-     "Low swept on above-average real futures volume (reclaim closed back above)")
-alertcondition(sweptHighStrong, "Volume-confirmed high sweep",
-     "High swept on above-average real futures volume (reclaim closed back below)")
+// --- state machine per level ---
+bool confLow  = false
+bool confHigh = false
+if barstate.isconfirmed and lvls.size() > 0
+    for j = lvls.size() - 1 to 0
+        L = lvls.get(j)
+        beyondTrade = L.isLow ? low < L.price : high > L.price
+        closeBeyond = L.isLow ? close < L.price : close > L.price
+        if beyondTrade
+            // Re-take AFTER a quiet reclaim bar? -> Timons rule: no sweep.
+            // (During a running multi-bar excursion, extending the extreme is
+            //  normal — only after the market rested inside does a new push
+            //  through the old extreme kill the sweep.)
+            retaken = L.rest and (L.isLow ? low < L.excExt : high > L.excExt)
+            if retaken
+                f_draw(L, false)
+                lvls.remove(j)
+            else if closeBeyond
+                lvls.remove(j)          // BREAK: closed beyond -> not a sweep
+            else if L.excBars + 1 > excMaxN
+                lvls.remove(j)          // too long beyond -> acceptance, no sweep
+            else
+                // excursion bar (start, continuation, or re-entry below the
+                // old extreme after resting): accumulate and (re)arm the hold
+                [bv, bd, ok] = f_beyond(L.price, L.isLow)
+                L.excBars  := L.excBars + 1
+                L.excVol   := L.excVol + bv
+                L.excDelta := L.excDelta + bd
+                L.excExact := L.excExact and ok
+                L.excExt   := L.isLow ? math.min(L.excExt, low) : math.max(L.excExt, high)
+                L.rest     := false
+                L.wait     := holdK
+                if holdK == 0
+                    // immediate mode: confirm on the reclaim bar itself
+                    s = f_draw(L, true)
+                    if L.isLow
+                        confLow := confLow or s
+                    else
+                        confHigh := confHigh or s
+                    lvls.remove(j)
+        else if L.wait >= 0
+            // quiet bar after the reclaim: count it toward confirmation
+            L.rest := true
+            if L.wait <= 1
+                s = f_draw(L, true)
+                if L.isLow
+                    confLow := confLow or s
+                else
+                    confHigh := confHigh or s
+                lvls.remove(j)
+            else
+                L.wait := L.wait - 1
+
+alertcondition(confLow,  "Volume-confirmed low sweep",
+     "Low swept and held: above-average real futures volume beyond the level")
+alertcondition(confHigh, "Volume-confirmed high sweep",
+     "High swept and held: above-average real futures volume beyond the level")
 
 if barstate.islast
     txt = (useFut ? "Futures volume: " + futSym + (na(futVol) ? " (NO DATA)" : " ✓")
                   : "Chart volume (native)")
+         + "\nSweep = <=" + str.tostring(excMaxN) + " bars beyond, no close beyond, held "
+         + str.tostring(holdK) + " bars"
          + "\nExcursion volume from " + ltf + "-min bars; ~ = full-bar fallback"
     label.new(bar_index, close, txt, style = label.style_label_left,
          color = color.new(color.black, 20), textcolor = color.white, size = size.small)
