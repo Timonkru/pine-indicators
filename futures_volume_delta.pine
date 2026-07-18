@@ -67,9 +67,34 @@ if showDelta and not na(ltfV) and ltfV.size() > 0
     delta := d
 
 // --- absorption: effort (futures volume) vs result (price range of THIS chart) ---
+// Percentiles are taken over ACTIVE bars only (futures volume > 0): on 24h CFD
+// charts the overnight bars would otherwise occupy the entire low-range
+// percentile and starve the flag on intraday timeframes (found 2026-07-18 —
+// flags only appeared on 1h and above before this fix).
 rng = high - low
-volRank = ta.percentrank(nz(vol), lookback)
-rngRank = ta.percentrank(rng, lookback)
+var array<float> volSample = array.new<float>()
+var array<float> rngSample = array.new<float>()
+f_rank(_arr, _val) =>
+    n = _arr.size()
+    if n < 30
+        50.0   // sample too small -> neutral, no flag
+    else
+        cnt = 0
+        for i = 0 to n - 1
+            if _arr.get(i) <= _val
+                cnt += 1
+        100.0 * cnt / n
+float volRank = na
+float rngRank = na
+if nz(vol) > 0 and barstate.isconfirmed
+    volSample.push(nz(vol))
+    rngSample.push(rng)
+    if volSample.size() > lookback
+        volSample.shift()
+        rngSample.shift()
+if nz(vol) > 0
+    volRank := f_rank(volSample, nz(vol))
+    rngRank := f_rank(rngSample, rng)
 absorb = flagAbs and nz(vol) > 0 and volRank >= volPct and rngRank <= rngPct
 
 // --- plots ---
