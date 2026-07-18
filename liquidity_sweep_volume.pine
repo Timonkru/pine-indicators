@@ -8,8 +8,10 @@
 //      beyond = no sweep either (acceptance, not a grab).
 //   3. RECLAIM: the excursion ends when price stops trading beyond the level.
 //   4. CONFIRMATION: the next K bars must NOT take out the excursion extreme.
-//      If they do, the sweep is INVALIDATED — it stays on the chart, grayed
-//      (honest display: it looked like a sweep and was not one).
+//      If price retakes it WITHOUT closing beyond the level, that is not the
+//      end but a DEEPER sweep leg (double/triple sweep, labeled x2/x3);
+//      volume accumulates across legs. More than maxLegs legs = chop, the
+//      level is dropped. A close beyond the level is always a break.
 // MEASUREMENT: futures contracts traded during the excursion minutes beyond
 // the level (mask on THIS chart's intrabar prices — CFD level vs CFD price,
 // no basis mixing; volume/delta from the auto-detected futures contract).
@@ -35,7 +37,9 @@ maxLvls  = input.int(8, "Max active levels per side", minval = 1, maxval = 20, g
 excMaxN  = input.int(3, "Max excursion bars beyond the level (N)", minval = 1, maxval = 10, group = "Sweep definition",
      tooltip = "Price may trade beyond the level for at most N bars. Longer = acceptance, not a sweep.")
 holdK    = input.int(2, "Confirmation: hold bars after reclaim (K)", minval = 0, maxval = 10, group = "Sweep definition",
-     tooltip = "The next K bars must not take out the excursion extreme, otherwise the sweep is invalidated (shown grayed). Labels/alerts fire K bars after the reclaim by design.")
+     tooltip = "The next K bars must not take out the excursion extreme. If they do WITHOUT closing beyond the level, a new sweep leg starts (x2, x3 ...). Labels/alerts fire K bars after the reclaim by design.")
+maxLegs  = input.int(3, "Max sweep legs (double/triple sweep)", minval = 1, maxval = 5, group = "Sweep definition",
+     tooltip = "Retaking the excursion extreme without closing beyond the level starts a deeper sweep leg (x2, x3 ...). More legs than this = chop, the level is dropped.")
 confMult = input.float(1.5, "Strong sweep: excursion vol >= x * bar average", step = 0.1, group = "Sweep definition")
 volMALen = input.int(50, "Volume MA length", minval = 1, group = "Sweep definition")
 
@@ -102,6 +106,7 @@ type Lvl
     int   wait       // remaining confirmation bars (-1 = not in confirmation)
     bool  rest       // true once a bar after the reclaim stayed inside
                      // (distinguishes excursion continuation from re-take)
+    int   legs       // sweep legs so far (2 = double sweep, 3 = triple ...)
     label lbl        // provisional Sweep? label (two-stage display)
 
 var array<Lvl> lvls = array.new<Lvl>()
@@ -120,7 +125,7 @@ var int nSWin = 0
 atrV = ta.atr(atrLenS)
 
 f_push(_price, _birth, _isLow, _isPD) =>
-    lvls.push(Lvl.new(_price, _birth, _isLow, _isPD, 0, _price, 0.0, 0.0, true, -1, false, label(na)))
+    lvls.push(Lvl.new(_price, _birth, _isLow, _isPD, 0, _price, 0.0, 0.0, true, -1, false, 0, label(na)))
     // cap per side (oldest non-PD first)
     int nSide = 0
     for i = 0 to lvls.size() - 1
@@ -136,7 +141,8 @@ f_push(_price, _birth, _isLow, _isPD) =>
                 break
 
 f_src(_L) =>
-    _L.isPD ? (_L.isLow ? "PDL" : "PDH") : (_L.isLow ? "low" : "high")
+    (_L.isPD ? (_L.isLow ? "PDL" : "PDH") : (_L.isLow ? "low" : "high"))
+     + (_L.legs >= 2 ? " x" + str.tostring(_L.legs) : "")
 
 f_numtxt(_L) =>
     rv = volMA > 0 ? _L.excVol / volMA : 0.0
@@ -150,30 +156,26 @@ f_fmt(_v) =>
      math.abs(_v) >= 1e3 ? str.tostring(_v / 1e3, "#.#") + "K" :
      str.tostring(_v, "#")
 
-f_draw(_L, _ok) =>
+f_draw(_L) =>
     // final stage: replace the provisional Sweep? label
     if not na(_L.lbl)
         label.delete(_L.lbl)
     // reference line: from the swing that provided the liquidity to here
-    lc = _ok ? (_L.isLow ? color.new(color.teal, 25) : color.new(color.red, 25))
-             : color.new(color.gray, 60)
+    lc = _L.isLow ? color.new(color.teal, 25) : color.new(color.red, 25)
     line.new(_L.birth, _L.price, bar_index, _L.price, color = lc,
-         width = _ok ? 2 : 1, style = _ok ? line.style_solid : line.style_dashed)
+         width = 2, style = line.style_solid)
     rvol = volMA > 0 ? _L.excVol / volMA : 0.0
     strong = rvol >= confMult
-    txt = _ok ?
-         ("Sweep " + f_src(_L) + (_L.excExact ? "" : " ~") + f_numtxt(_L))
-         : "x no sweep\n(extreme retaken)"
+    txt = "Sweep " + f_src(_L) + (_L.excExact ? "" : " ~") + f_numtxt(_L)
     label.new(bar_index, _L.isLow ? low : high, txt,
          style = _L.isLow ? label.style_label_up : label.style_label_down,
-         color = not _ok ? color.new(color.gray, 65)
-              : strong ? color.new(_L.isLow ? color.teal : color.red, 15)
+         color = strong ? color.new(_L.isLow ? color.teal : color.red, 15)
               : color.new(color.gray, 45),
          textcolor = color.white, size = size.small)
-    if _ok and scoreOn
+    if scoreOn
         trks.push(Trk.new(_L.isLow, _L.excExt,
              _L.isLow ? _L.price + revMult * atrV : _L.price - revMult * atrV, strong))
-    _ok and strong
+    strong
 
 // --- new reference levels ---
 pLo = ta.pivotlow(pivLen, pivLen)
@@ -231,27 +233,28 @@ if barstate.isconfirmed and lvls.size() > 0
         beyondTrade = L.isLow ? low < L.price : high > L.price
         closeBeyond = L.isLow ? close < L.price : close > L.price
         if beyondTrade
-            // Re-take AFTER a quiet reclaim bar? -> Timons rule: no sweep.
-            // (During a running multi-bar excursion, extending the extreme is
-            //  normal — only after the market rested inside does a new push
-            //  through the old extreme kill the sweep.)
-            retaken = L.rest and (L.isLow ? low < L.excExt : high > L.excExt)
-            if retaken
-                f_draw(L, false)
-                lvls.remove(j)
-            else if closeBeyond
+            // Re-take of the extreme AFTER a quiet reclaim bar: not the end —
+            // if the bar still closes back inside, a DEEPER sweep leg starts
+            // (double/triple sweep, x2/x3). Closing beyond stays a break.
+            newLeg = L.rest and (L.isLow ? low < L.excExt : high > L.excExt)
+            if closeBeyond
                 if not na(L.lbl)
                     label.delete(L.lbl)
                 lvls.remove(j)          // BREAK: closed beyond -> not a sweep
-            else if L.excBars + 1 > excMaxN
+            else if newLeg and L.legs + 1 > maxLegs
+                if not na(L.lbl)
+                    label.delete(L.lbl)
+                lvls.remove(j)          // too many legs -> chop, no pattern
+            else if not newLeg and L.excBars + 1 > excMaxN
                 if not na(L.lbl)
                     label.delete(L.lbl)
                 lvls.remove(j)          // too long beyond -> acceptance, no sweep
             else
-                // excursion bar (start, continuation, or re-entry below the
-                // old extreme after resting): accumulate and (re)arm the hold
+                // excursion bar: leg start, continuation, re-entry after rest
+                // (below the old extreme), or a NEW deeper leg through it
                 [bv, bd, ok] = f_beyond(L.price, L.isLow)
-                L.excBars  := L.excBars + 1
+                L.legs     := L.legs == 0 ? 1 : newLeg ? L.legs + 1 : L.legs
+                L.excBars  := newLeg ? 1 : L.excBars + 1
                 L.excVol   := L.excVol + bv
                 L.excDelta := L.excDelta + bd
                 L.excExact := L.excExact and ok
@@ -270,7 +273,7 @@ if barstate.isconfirmed and lvls.size() > 0
                          size = size.small)
                 if holdK == 0
                     // immediate mode: confirm on the reclaim bar itself
-                    s = f_draw(L, true)
+                    s = f_draw(L)
                     if L.isLow
                         confLow := confLow or s
                     else
@@ -280,7 +283,7 @@ if barstate.isconfirmed and lvls.size() > 0
             // quiet bar after the reclaim: count it toward confirmation
             L.rest := true
             if L.wait <= 1
-                s = f_draw(L, true)
+                s = f_draw(L)
                 if L.isLow
                     confLow := confLow or s
                 else

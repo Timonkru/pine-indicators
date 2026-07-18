@@ -467,8 +467,10 @@ swing point. This one does two things differently. First, the definition is
 strict and testable: the excursion beyond the level may last several bars but
 NO bar may close beyond it (a close beyond is a breakout, not a sweep), and
 after the reclaim the excursion extreme must HOLD for a configurable number
-of bars — if it is retaken, the sweep is invalidated and stays on the chart
-grayed out instead of being silently deleted. Second, every surviving sweep
+of bars. If the extreme is retaken without a close beyond, that is treated as
+what it usually is — a DEEPER grab: a second (third ...) sweep leg starts,
+labeled x2/x3, with the volume accumulating across legs. Too many legs = chop
+and the level is dropped. Second, every surviving sweep
 is quantified with the exchange volume of the auto-detected futures contract
 (the chart's broker tick volume is never used): the excursion minutes are
 located on this chart's own lower-timeframe prices (CFD price against CFD
@@ -482,11 +484,15 @@ How it works:
   reclaim, then K quiet bars that do not retake the excursion extreme. N and
   K are inputs.
 - Two-stage display: a gray "Sweep?" label appears right at the reclaim bar —
-  its volume numbers are already final (the excursion is measured), only the
-  hold is still open. After K bars it is upgraded to the solid confirmed
-  label, or grayed out with an "x" if the extreme was retaken. Nothing is
-  silently deleted, and the ALERT fires on confirmation only — that is the
-  repaint-free price of the hold rule.
+  its volume numbers are final for the leg so far, only the hold is still
+  open. After K quiet bars it is upgraded to the solid confirmed label; if a
+  deeper leg starts instead, the label updates to x2/x3 with the combined
+  volume. The ALERT fires on confirmation only — that is the repaint-free
+  price of the hold rule.
+- Double/triple sweeps (x2/x3) are first-class: retaking the extreme without
+  closing beyond starts a new leg instead of discarding the pattern — the
+  deeper grab is usually the stronger one, and its label carries the total
+  liquidity taken across all legs.
 - A line connects the swept swing to the sweep, so you see WHICH liquidity
   was taken. Invalidated sweeps stay visible in gray (honest history).
 - Each confirmed sweep prints: excursion volume (futures contracts traded
