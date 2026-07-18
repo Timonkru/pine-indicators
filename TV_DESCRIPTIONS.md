@@ -21,6 +21,7 @@ bewusst deutsch/privat — statische Tageswerte sind ohnehin nicht publizierbar
 |---|---|
 | Futures-Vol-Profil | **Futures Volume Profile — CFD Charts** |
 | Futures-Vol-VWAP | **Futures Volume VWAP + Bands — CFD Charts** |
+| Futures-Session-TWAP | **Futures Session TWAP + Bands — CFD Charts** |
 | Kasse Alerts | **Session Candle Levels & Alerts — Intraday** |
 | Kasse Swing | **Session Candle Levels & Alerts — Weekly Swing** |
 | Fisher ACD | **Opening Range ACD + Pivot Ranges — Label-Free** |
@@ -318,6 +319,52 @@ volume tools — the companions are on my profile.*
 
 ---
 
+## 8) Futures Session TWAP + Bands — CFD Charts
+
+**Titel:** Futures Session TWAP + Bands — CFD Charts
+
+**Beschreibung (Copy-Paste):**
+
+An anchored TWAP (time-weighted average price) with 1/2/3-sigma bands that
+knows when the real market is actually open — built for CFD and cash-index
+charts whose 24h quotes distort classic session averages.
+
+What makes it original: a TWAP weighs every bar equally, so on a 24h CFD chart
+the thin overnight bars count as much as the liquid session and drag the line
+away from the number execution desks reference. This indicator pulls the
+volume of the auto-detected futures contract and uses it as a SESSION GATE:
+only bars where the future actually traded are counted. It also plots an
+optional futures-volume VWAP on the same anchor, so the TWAP-vs-VWAP spread
+becomes readable at a glance — that spread is the point of the pair.
+
+How it works:
+- TWAP = equal-weight average of the chart's price (hlc3 by default) over the
+  anchor period (session/week/month); bands from the time-weighted variance.
+- Session gate (optional, on by default): bars without futures volume are
+  skipped, so the TWAP covers the real trading session. Only session/volume
+  information is borrowed from the future — the price stays this chart's
+  price, so the futures-vs-cash basis cannot distort the level.
+- The futures contract is auto-detected from the chart symbol (DAX/GER40 ->
+  FDAX, NAS100 -> NQ, US30 -> YM, UK100 -> Z, US500 -> ES), or set manually.
+- Optional "Daily anchor = futures trading day" resets at the futures day
+  change instead of CFD broker midnight, matching the sibling VWAP tool.
+- A status label shows the active source, the gate state and the current
+  VWAP-minus-TWAP spread.
+
+How to use it: the TWAP is the fair time-average of the session — the line an
+evenly-sliced execution would achieve. Compare it with the futures-volume
+VWAP: VWAP above TWAP means volume was concentrated above the time average
+(participants paid up), VWAP below TWAP means volume traded below it. The two
+lines glued together signals balanced rotation; a widening spread marks
+one-sided participation. The 2/3-sigma bands frame statistically stretched
+zones relative to the session mean. Check the status label once after loading
+to confirm the futures feed is active.
+
+*This script is part of a consistent set of open-source session, range and
+volume tools — the companions are on my profile.*
+
+---
+
 ## Kategorien & Tags (beim Publizieren)
 
 Kategorie = TV-Dropdown (fix; nächstliegenden nehmen, falls Name abweicht).
@@ -327,6 +374,7 @@ Tags = Freitext, klein, ohne Brand/Personennamen.
 |---|---|---|
 | Futures Volume Profile | Volume | volumeprofile, futures, cfd, poc, valuearea, sessions, dax, nasdaq, orderflow |
 | Futures Volume VWAP + Bands | VWAP (sonst Volume) | vwap, futures, cfd, volume, bands, standarddeviation, meanreversion, intraday |
+| Futures Session TWAP + Bands | VWAP (sonst Volume) | twap, vwap, futures, cfd, sessions, bands, standarddeviation, meanreversion, execution, intraday |
 | Session Candle Levels — Intraday | Support and Resistance | sessions, intraday, daytrading, breakout, alerts, keylevels, premarket, fomc, indices |
 | Session Candle Levels — Weekly Swing | Support and Resistance | swingtrading, weeklylevels, monthlylevels, cot, breakout, alerts, keylevels |
 | Opening Range ACD + Pivot Ranges | Pivot points and levels | acd, openingrange, orb, pivotrange, breakout, daytrading, bias, daytradingsystem |
