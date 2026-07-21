@@ -47,10 +47,14 @@ paste3 = input.text_area("", "Chain paste 3", group = grpFmt)
 paste4 = input.text_area("", "Chain paste 4", group = grpFmt)
 paste5 = input.text_area("", "Chain paste 5", group = grpFmt)
 paste6 = input.text_area("", "Chain paste 6", group = grpFmt)
+paste7 = input.text_area("", "Chain paste 7", group = grpFmt)
+paste8 = input.text_area("", "Chain paste 8", group = grpFmt)
+paste9 = input.text_area("", "Chain paste 9", group = grpFmt)
+paste10 = input.text_area("", "Chain paste 10", group = grpFmt)
 
 grpM = "Market"
 showDbg = input.bool(false, "Diagnostics: rows accepted per paste field", group = grpM,
-     tooltip = "Shows F1..F6 with the number of structure rows each field contributed. " +
+     tooltip = "Shows F1..F10 with the number of structure rows each field contributed. " +
      "Exactly one field should be non-zero when you paste one market per field.")
 mktSel = input.string("Auto", "Market", options = ["Auto", "DAX", "NQ", "DOW", "GOLD", "FTSE", "SPX"], group = grpM,
      tooltip = "Which market= blocks to use. Auto detects from the chart symbol. Blocks WITHOUT a market= key always apply (single-market use).")
@@ -455,8 +459,12 @@ if barstate.islast
     // v1.3: resolve the wanted market, then collect BOTH cards across all six
     // fields. Key-less blocks always apply (single-market legacy use).
     wantMkt = mktKey != "" ? str.upper(mktKey) : mktSel != "Auto" ? mktSel : f_detect()
-    fieldTxt = array.from(paste1, paste2, paste3, paste4, paste5, paste6)
-    fieldDef = array.from("structure", "near", "structure", "structure", "structure", "structure")
+    fieldTxt = array.from(paste1, paste2, paste3, paste4, paste5, paste6,
+         paste7, paste8, paste9, paste10)
+    // Feld 2 zaehlt ohne map= als NAH (Altverhalten des frueheren zweiten
+    // Feldes); alle uebrigen als STRUKTUR. Mit map= im Header ist es egal.
+    fieldDef = array.from("structure", "near", "structure", "structure", "structure",
+         "structure", "structure", "structure", "structure", "structure")
     okS = false
     float spotS = na, float dteS = na, float multS = 1.0
     float fivS = 0.2, float aivS = na
@@ -464,7 +472,7 @@ if barstate.islast
     mS = 0
     dS = 0
     dbgS = ""
-    for fi = 0 to 5
+    for fi = 0 to 9
         nBefore = array.size(sK)
         [o, sp, dt_, mu, fv, av, y_, m_, d_] = f_parse(array.get(fieldTxt, fi), sK, sC, sP, sIv, sDt,
              "structure", wantMkt, array.get(fieldDef, fi))
@@ -532,7 +540,7 @@ if barstate.islast
         okN = false
         float spotN = na, float dteN = na, float multN = 1.0
         float fivN = 0.2, float aivN = na
-        for fi = 0 to 5
+        for fi = 0 to 9
             [oN, spN, dtN_, muN, fvN, avN, yN_, mN_, dN_] = f_parse(array.get(fieldTxt, fi), nK, nC, nP, nIv, nDt,
                  "near", wantMkt, array.get(fieldDef, fi))
             if oN and not okN
