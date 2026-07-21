@@ -12,6 +12,11 @@
 // v1.2 adds an optional per-strike expiry (5th field): gamma grows ~1/sqrt(T),
 // so rows spanning several expiries priced on one averaged dte can shift the
 // flip by hundreds of points. Old pastes keep working (header-dte fallback).
+// v1.3 makes ONE paste serve EVERY chart: six input fields, each block may
+// carry market= (auto-matched against the chart symbol, override available)
+// and map=near for the near-dated card. TradingView silently truncates each
+// text field at ~10,900 characters - measured, not documented - so large
+// chains are split across fields; the script reads them as one.
 // No external data is fetched (Pine cannot); the chain snapshot is USER INPUT,
 // so the script itself never goes stale — refresh the paste, not the code.
 // Sign convention (an assumption, not a law): dealers long call gamma, short
@@ -23,17 +28,31 @@ indicator("Gamma Exposure Profile — Manual Chain Input", shorttitle = "GEX Pro
 
 // ---------------------------------------------------------------- inputs ---
 grpFmt = "Chain input"
-fmtTip = "First line (header): #spot=24915.5;dte=21.4;mult=5;iv=0.18;date=2026-07-17\n" +
+fmtTip = "Block header: #market=DAX;spot=24915.5;dte=21.4;mult=5;iv=0.18;aiv=0.16;date=2026-07-17\n" +
+     "market= (optional) names the block; the script auto-picks the block matching the chart symbol " +
+     "(DAX/NQ/DOW/GOLD/FTSE/SPX, or set the override below). map=near marks a near-dated card. " +
+     "One field may hold several blocks; all six fields are read as one paste.\n" +
+     "NOTE: TradingView silently cuts each field at ~10,900 characters - split large chains across fields.\n" +
      "Then one line per strike: strike;callOI;putOI[;iv[;dte]]\n" +
      "dte per strike (5th field) overrides the header value - include it whenever the rows span several " +
      "expiries: gamma grows ~1/sqrt(T), one averaged dte can shift the flip by hundreds of points.\n" +
      "spot = underlying index/spot price, dte = days to expiry (representative), " +
      "mult = contract multiplier, iv = fallback implied vol (decimal) for rows without one, " +
      "date = snapshot date (optional, enables the staleness warning)."
-structTxt = input.text_area("#spot=24900;dte=21;mult=5;iv=0.18\n24000;1200;8300\n24200;900;5100\n24400;1500;4200\n24600;2100;3900\n24800;2600;3000\n25000;5200;2800\n25200;4100;1900\n25400;2600;1200\n25600;6800;900\n25800;1900;600",
-     "Structure chain (e.g. 7-45 DTE)", tooltip = fmtTip, group = grpFmt)
-nearTxt   = input.text_area("", "Near chain (e.g. 0-5 DTE, optional)",
-     tooltip = "Same format. Leave empty to skip the near-dated map.", group = grpFmt)
+paste1 = input.text_area("#spot=24900;dte=21;mult=5;iv=0.18\n24000;1200;8300\n24200;900;5100\n24400;1500;4200\n24600;2100;3900\n24800;2600;3000\n25000;5200;2800\n25200;4100;1900\n25400;2600;1200\n25600;6800;900\n25800;1900;600",
+     "Chain paste 1", tooltip = fmtTip, group = grpFmt)
+paste2 = input.text_area("", "Chain paste 2", group = grpFmt,
+     tooltip = "Without a map= key, blocks here count as the NEAR card (legacy behaviour of the old second field).")
+paste3 = input.text_area("", "Chain paste 3", group = grpFmt)
+paste4 = input.text_area("", "Chain paste 4", group = grpFmt)
+paste5 = input.text_area("", "Chain paste 5", group = grpFmt)
+paste6 = input.text_area("", "Chain paste 6", group = grpFmt)
+
+grpM = "Market"
+mktSel = input.string("Auto", "Market", options = ["Auto", "DAX", "NQ", "DOW", "GOLD", "FTSE", "SPX"], group = grpM,
+     tooltip = "Which market= blocks to use. Auto detects from the chart symbol. Blocks WITHOUT a market= key always apply (single-market use).")
+mktKey = input.string("", "Market key override (free text)", group = grpM,
+     tooltip = "For symbols the auto-detection does not know: type the exact market= value used in your paste.")
 
 grpD = "Display"
 showHist   = input.bool(true, "Show GEX histogram", group = grpD)
@@ -95,6 +114,24 @@ f_gamma(S, K, T, sig) =>
         g := f_npdf(d1) / (S * srt)
     g
 
+// ------------------------------------------------------- market detect ----
+f_detect() =>
+    t = str.upper(syminfo.ticker)
+    r = ""
+    if str.contains(t, "GER") or str.contains(t, "DAX") or str.contains(t, "DE40") or str.contains(t, "DE30")
+        r := "DAX"
+    else if str.contains(t, "NAS") or str.contains(t, "US100") or str.contains(t, "USTEC") or str.contains(t, "NDX")
+        r := "NQ"
+    else if str.contains(t, "US30") or str.contains(t, "WS30") or str.contains(t, "DOW") or str.contains(t, "DJ")
+        r := "DOW"
+    else if str.contains(t, "XAU") or str.contains(t, "GOLD") or str.contains(t, "GC")
+        r := "GOLD"
+    else if str.contains(t, "UK100") or str.contains(t, "FTSE")
+        r := "FTSE"
+    else if str.contains(t, "SPX") or str.contains(t, "US500") or str.contains(t, "SP500") or str.contains(t, "ES")
+        r := "SPX"
+    r
+
 // ------------------------------------------------------------- parser -----
 // Returns [ok, spot, dte, mult, fallbackIv, atmIv, y, m, d]; atmIv comes from
 // the optional header key aiv= (ATM IV of the FULL chain incl. zero-OI rows
@@ -102,7 +139,10 @@ f_gamma(S, K, T, sig) =>
 // dts: per-strike days-to-expiry (optional 5th field; -1 = use the header dte).
 // v1.1: gamma grows ~1/sqrt(T) — when the rows span several expiries, one
 // averaged dte skews the flip (measured: 368 points on a Dow chain).
-f_parse(txt, ks, cs, ps, ivs, dts) =>
+// v1.3: wantMap = "structure"|"near" - which card this call collects.
+// wantMkt = the market key to match; "" accepts only key-less blocks.
+// defMap  = card assigned to key-less blocks in this field (legacy layout).
+f_parse(txt, ks, cs, ps, ivs, dts, wantMap, wantMkt, defMap) =>
     ok = false
     float spot = na
     float dte  = na
@@ -112,6 +152,7 @@ f_parse(txt, ks, cs, ps, ivs, dts) =>
     int   yy = 0
     int   mm = 0
     int   dd = 0
+    blkOn = defMap == wantMap   // state before the first header line
     if str.length(txt) > 0
         // strip whitespace globally — the format is purely numeric/keyword
         clean = str.replace_all(str.replace_all(str.replace_all(txt, "\r", ""), "\t", ""), " ", "")
@@ -121,6 +162,20 @@ f_parse(txt, ks, cs, ps, ivs, dts) =>
             if str.length(ln) == 0
                 continue
             if str.startswith(ln, "#")
+                // each header starts a new block; read gating keys first
+                blkMkt = ""
+                blkMap = defMap
+                toks0 = str.split(str.substring(ln, 1), ";")
+                for ti = 0 to array.size(toks0) - 1
+                    kv = str.split(array.get(toks0, ti), "=")
+                    if array.size(kv) == 2
+                        if str.lower(array.get(kv, 0)) == "market"
+                            blkMkt := str.upper(array.get(kv, 1))
+                        else if str.lower(array.get(kv, 0)) == "map"
+                            blkMap := str.lower(array.get(kv, 1))
+                blkOn := blkMap == wantMap and (blkMkt == "" or blkMkt == wantMkt)
+                if not blkOn
+                    continue
                 toks = str.split(str.substring(ln, 1), ";")
                 for ti = 0 to array.size(toks) - 1
                     kv = str.split(array.get(toks, ti), "=")
@@ -144,6 +199,8 @@ f_parse(txt, ks, cs, ps, ivs, dts) =>
                                 mm := int(nz(str.tonumber(array.get(dp, 1))))
                                 dd := int(nz(str.tonumber(array.get(dp, 2))))
             else
+                if not blkOn
+                    continue
                 f = str.split(ln, ";")
                 if array.size(f) >= 3
                     k  = str.tonumber(array.get(f, 0))
@@ -375,9 +432,26 @@ if barstate.islast
     array.clear(sK), array.clear(sC), array.clear(sP), array.clear(sIv), array.clear(sDt)
     array.clear(nK), array.clear(nC), array.clear(nP), array.clear(nIv), array.clear(nDt)
     f_clear()
-    [okS, spotS, dteS, multS, fivS, aivS, yS, mS, dS] = f_parse(structTxt, sK, sC, sP, sIv, sDt)
+    // v1.3: resolve the wanted market, then collect BOTH cards across all six
+    // fields. Key-less blocks always apply (single-market legacy use).
+    wantMkt = mktKey != "" ? str.upper(mktKey) : mktSel != "Auto" ? mktSel : f_detect()
+    fieldTxt = array.from(paste1, paste2, paste3, paste4, paste5, paste6)
+    fieldDef = array.from("structure", "near", "structure", "structure", "structure", "structure")
+    okS = false
+    float spotS = na, float dteS = na, float multS = 1.0
+    float fivS = 0.2, float aivS = na
+    yS = 0, mS = 0, dS = 0
+    for fi = 0 to 5
+        [o, sp, dt_, mu, fv, av, y_, m_, d_] = f_parse(array.get(fieldTxt, fi), sK, sC, sP, sIv, sDt,
+             "structure", wantMkt, array.get(fieldDef, fi))
+        if o and not okS
+            okS := true
+            spotS := sp, dteS := dt_, multS := mu, fivS := fv, aivS := av
+            yS := y_, mS := m_, dS := d_
     if not okS
-        array.push(labs, label.new(bar_index, high, "GEX Profile: no valid structure chain.\nSettings -> paste header + strike rows (see tooltip).",
+        array.push(labs, label.new(bar_index, high,
+             "GEX Profile: no structure chain for this chart" + (wantMkt != "" ? " (market " + wantMkt + ")" : "") +
+             ".\nPaste blocks into the settings - see the tooltip for the format -\nor set the Market override if your symbol is not auto-detected.",
              style = label.style_label_left, color = color.new(color.orange, 10), textcolor = color.black, size = size.normal))
     else
         [flip, cw, pw, cw2, pw2, em, totGex] = f_levels(sK, sC, sP, sIv, sDt, fivS, aivS, dteS, multS, spotS, sKA, sGx)
@@ -422,7 +496,15 @@ if barstate.islast
                         array.push(boxes, box.new(x0, k + step, x0 + w, k - step,
                              border_color = na, bgcolor = v >= 0 ? posCol : negCol))
         // ---- near map ----
-        [okN, spotN, dteN, multN, fivN, aivN, yN, mN, dN] = f_parse(nearTxt, nK, nC, nP, nIv, nDt)
+        okN = false
+        float spotN = na, float dteN = na, float multN = 1.0
+        float fivN = 0.2, float aivN = na
+        for fi = 0 to 5
+            [oN, spN, dtN_, muN, fvN, avN, yN_, mN_, dN_] = f_parse(array.get(fieldTxt, fi), nK, nC, nP, nIv, nDt,
+                 "near", wantMkt, array.get(fieldDef, fi))
+            if oN and not okN
+                okN := true
+                spotN := spN, dteN := dtN_, multN := muN, fivN := fvN, aivN := avN
         float ncw = na
         float npw = na
         if okN and showNear
