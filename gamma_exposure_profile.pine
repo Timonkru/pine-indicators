@@ -5,18 +5,28 @@
 // Black-Scholes gamma per strike, aggregates signed dealer GEX (calls +,
 // puts -), finds the gamma flip, call/put walls and the expected move, and
 // draws the exposure profile next to price.
+// v1.1 adds the two second-order flows on the same chain: VANNA (how dealer
+// delta reacts to a change in implied volatility, reported per one vol point)
+// and CHARM (how dealer delta decays with time, per trading day). They
+// describe hedging pressure that builds without price moving at all.
+// v1.2 adds an optional per-strike expiry (5th field): gamma grows ~1/sqrt(T),
+// so rows spanning several expiries priced on one averaged dte can shift the
+// flip by hundreds of points. Old pastes keep working (header-dte fallback).
 // No external data is fetched (Pine cannot); the chain snapshot is USER INPUT,
 // so the script itself never goes stale — refresh the paste, not the code.
 // Sign convention (an assumption, not a law): dealers long call gamma, short
 // put gamma. All values are model estimates (r = 0, one representative expiry
-// per map), meant as context levels — not trade signals.
+// per map), meant as context levels — not trade signals. Vanna and charm carry
+// an extra caveat: unlike the gamma regime they are not backtested here.
 indicator("Gamma Exposure Profile — Manual Chain Input", shorttitle = "GEX Profile", overlay = true,
      max_boxes_count = 250, max_lines_count = 30, max_labels_count = 20)
 
 // ---------------------------------------------------------------- inputs ---
 grpFmt = "Chain input"
 fmtTip = "First line (header): #spot=24915.5;dte=21.4;mult=5;iv=0.18;date=2026-07-17\n" +
-     "Then one line per strike: strike;callOI;putOI[;iv]\n" +
+     "Then one line per strike: strike;callOI;putOI[;iv[;dte]]\n" +
+     "dte per strike (5th field) overrides the header value - include it whenever the rows span several " +
+     "expiries: gamma grows ~1/sqrt(T), one averaged dte can shift the flip by hundreds of points.\n" +
      "spot = underlying index/spot price, dte = days to expiry (representative), " +
      "mult = contract multiplier, iv = fallback implied vol (decimal) for rows without one, " +
      "date = snapshot date (optional, enables the staleness warning)."
@@ -41,11 +51,42 @@ neutralPct = input.float(0.3, "Flip zone (± %)", minval = 0.05, step = 0.05, gr
 offset     = input.float(0.0, "Chart offset (points)", group = grpD,
      tooltip = "Constant basis offset between your chart (e.g. a CFD) and the option underlying. Added to every level.")
 
+grpF = "Second-order flows (context — model estimate, not a signal)"
+showFlow  = input.bool(true, "Vanna / charm in the label", group = grpF,
+     tooltip = "Vanna = how dealer delta reacts to a change in implied volatility (reported per one vol point). " +
+     "Charm = how dealer delta decays as time passes (per trading day). Both use the same dealer sign convention " +
+     "as the GEX above (long calls, short puts) and assume r = 0. They describe hedging pressure that builds " +
+     "WITHOUT price moving — unlike the gamma regime, they are not backtested here. Read them as context.")
+showVanna = input.bool(false, "Dominant vanna strike (purple, dotted)", group = grpF)
+showCharm = input.bool(false, "Dominant charm strike (aqua, dotted)", group = grpF)
+
 // ------------------------------------------------------- Black-Scholes ----
 f_npdf(x) => math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
 // BS gamma, r = 0. Same value for call and put at equal strike/IV, so the
 // signed per-strike sum reduces to gamma * (callOI - putOI).
+// Vanna = dDelta/dVol, per 1.0 vol (decimal).  r = 0 assumed throughout.
+//   vanna = -phi(d1) * d2 / sigma
+f_vanna(S, K, T, sig) =>
+    float v = 0.0
+    if T > 0 and sig > 0 and S > 0 and K > 0
+        srt = sig * math.sqrt(T)
+        d1  = (math.log(S / K) + 0.5 * sig * sig * T) / srt
+        d2  = d1 - srt
+        v := -f_npdf(d1) * d2 / sig
+    v
+
+// Charm = dDelta/dt as time passes, per YEAR.  With r = 0 this reduces to
+//   charm = phi(d1) * d2 / (2T)
+f_charm(S, K, T, sig) =>
+    float c = 0.0
+    if T > 0 and sig > 0 and S > 0 and K > 0
+        srt = sig * math.sqrt(T)
+        d1  = (math.log(S / K) + 0.5 * sig * sig * T) / srt
+        d2  = d1 - srt
+        c := f_npdf(d1) * d2 / (2.0 * T)
+    c
+
 f_gamma(S, K, T, sig) =>
     float g = 0.0
     if T > 0 and sig > 0 and S > 0 and K > 0
@@ -56,7 +97,10 @@ f_gamma(S, K, T, sig) =>
 
 // ------------------------------------------------------------- parser -----
 // Returns [ok, spot, dte, mult, fallbackIv, y, m, d] and fills the arrays.
-f_parse(txt, ks, cs, ps, ivs) =>
+// dts: per-strike days-to-expiry (optional 5th field; -1 = use the header dte).
+// v1.1: gamma grows ~1/sqrt(T) — when the rows span several expiries, one
+// averaged dte skews the flip (measured: 368 points on a Dow chain).
+f_parse(txt, ks, cs, ps, ivs, dts) =>
     ok = false
     float spot = na
     float dte  = na
@@ -101,20 +145,24 @@ f_parse(txt, ks, cs, ps, ivs) =>
                     c  = str.tonumber(array.get(f, 1))
                     p  = str.tonumber(array.get(f, 2))
                     iv = array.size(f) >= 4 ? str.tonumber(array.get(f, 3)) : na
+                    dt = array.size(f) >= 5 ? str.tonumber(array.get(f, 4)) : na
                     if not na(k) and (nz(c) > 0 or nz(p) > 0)
                         array.push(ks, k)
                         array.push(cs, nz(c))
                         array.push(ps, nz(p))
                         array.push(ivs, na(iv) ? -1.0 : iv)   // -1 = use fallback
+                        array.push(dts, na(dt) or dt <= 0 ? -1.0 : dt)   // -1 = header dte
         ok := array.size(ks) > 0 and not na(spot) and not na(dte) and dte > 0
     [ok, spot, dte, mult, fiv, yy, mm, dd]
 
 // Total signed GEX (USD per 1% move) at a hypothetical spot S.
-f_totalGex(S, ks, cs, ps, ivs, fiv, T, mult) =>
+f_totalGex(S, ks, cs, ps, ivs, dts, fiv, Thdr, mult) =>
     total = 0.0
     for i = 0 to array.size(ks) - 1
         iv = array.get(ivs, i)
         sig = iv > 0 ? iv : fiv
+        dt = array.get(dts, i)
+        T = dt > 0 ? dt / 365.0 : Thdr
         g = f_gamma(S, array.get(ks, i), T, sig)
         total += g * (array.get(cs, i) - array.get(ps, i)) * mult * S * S * 0.01
     total
@@ -122,8 +170,8 @@ f_totalGex(S, ks, cs, ps, ivs, fiv, T, mult) =>
 // Levels of one map: [flip, cw, pw, cw2, pw2, emAbs, totalAtSpot].
 // Flip = zero crossing of total GEX over a spot grid (nearest to spot).
 // Walls = strikes with the largest positive / most negative per-strike GEX.
-f_levels(ks, cs, ps, ivs, fiv, dte, mult, spot, gexOut) =>
-    T = dte / 365.0
+f_levels(ks, cs, ps, ivs, dts, fiv, dte, mult, spot, gexOut) =>
+    T = dte / 365.0   // header dte -> fallback for rows without field 5
     n = array.size(ks)
     // per-strike signed GEX at the current spot (also feeds the histogram)
     array.clear(gexOut)
@@ -136,7 +184,9 @@ f_levels(ks, cs, ps, ivs, fiv, dte, mult, spot, gexOut) =>
         iv = array.get(ivs, i)
         sig = iv > 0 ? iv : fiv
         k = array.get(ks, i)
-        v = f_gamma(spot, k, T, sig) * (array.get(cs, i) - array.get(ps, i)) * mult * spot * spot * 0.01
+        dtI = array.get(dts, i)
+        Ti = dtI > 0 ? dtI / 365.0 : T
+        v = f_gamma(spot, k, Ti, sig) * (array.get(cs, i) - array.get(ps, i)) * mult * spot * spot * 0.01
         array.push(gexOut, v)
         if v > maxPos
             maxPos2 := maxPos, cw2 := cw
@@ -159,10 +209,10 @@ f_levels(ks, cs, ps, ivs, fiv, dte, mult, spot, gexOut) =>
     flipDist = 1e18
     steps = 120
     prevS = kLo
-    prevV = f_totalGex(kLo, ks, cs, ps, ivs, fiv, T, mult)
+    prevV = f_totalGex(kLo, ks, cs, ps, ivs, dts, fiv, T, mult)
     for j = 1 to steps
         s = kLo + (kHi - kLo) * j / steps
-        v = f_totalGex(s, ks, cs, ps, ivs, fiv, T, mult)
+        v = f_totalGex(s, ks, cs, ps, ivs, dts, fiv, T, mult)
         if (prevV < 0 and v >= 0) or (prevV >= 0 and v < 0)
             x = prevS + (s - prevS) * (0 - prevV) / (v - prevV)
             if math.abs(x - spot) < flipDist
@@ -171,18 +221,48 @@ f_levels(ks, cs, ps, ivs, fiv, dte, mult, spot, gexOut) =>
         prevS := s
         prevV := v
     em = spot * ivAtm * math.sqrt(1.0 / 365.0)
-    [flip, cw, pw, cw2, pw2, em, f_totalGex(spot, ks, cs, ps, ivs, fiv, T, mult)]
+    [flip, cw, pw, cw2, pw2, em, f_totalGex(spot, ks, cs, ps, ivs, dts, fiv, T, mult)]
+
+// Second-order dealer flows at the current spot — same sign convention as GEX
+// (dealers long calls, short puts, so the per-strike weight is callOI-putOI):
+//   vanna exposure = $ delta shift per ONE volatility POINT (0.01)
+//   charm exposure = $ delta shift per TRADING DAY (year / 252)
+// Returns [totalVanna, dominantVannaStrike, totalCharm, dominantCharmStrike];
+// "dominant" = the strike carrying the largest absolute exposure.
+f_flows(ks, cs, ps, ivs, dts, fiv, dte, mult, spot) =>
+    T = dte / 365.0   // header dte -> fallback
+    float tv = 0.0, float tc = 0.0
+    float vk = na, float ck = na
+    maxV = 0.0, maxC = 0.0
+    for i = 0 to array.size(ks) - 1
+        iv  = array.get(ivs, i)
+        sig = iv > 0 ? iv : fiv
+        k   = array.get(ks, i)
+        dtI = array.get(dts, i)
+        Ti  = dtI > 0 ? dtI / 365.0 : T
+        net = array.get(cs, i) - array.get(ps, i)
+        v = f_vanna(spot, k, Ti, sig) * net * mult * spot * 0.01
+        c = f_charm(spot, k, Ti, sig) * net * mult * spot / 252.0
+        tv += v
+        tc += c
+        if math.abs(v) > maxV
+            maxV := math.abs(v), vk := k
+        if math.abs(c) > maxC
+            maxC := math.abs(c), ck := k
+    [tv, vk, tc, ck]
 
 // ------------------------------------------------------------ compute -----
 var float[] sK  = array.new_float()
 var float[] sC  = array.new_float()
 var float[] sP  = array.new_float()
 var float[] sIv = array.new_float()
+var float[] sDt = array.new_float()
 var float[] sGx = array.new_float()
 var float[] nK  = array.new_float()
 var float[] nC  = array.new_float()
 var float[] nP  = array.new_float()
 var float[] nIv = array.new_float()
+var float[] nDt = array.new_float()
 var float[] nGx = array.new_float()
 
 var box[]   boxes = array.new_box()
@@ -208,15 +288,15 @@ var float g_cw   = na
 var float g_pw   = na
 
 if barstate.islast
-    array.clear(sK), array.clear(sC), array.clear(sP), array.clear(sIv)
-    array.clear(nK), array.clear(nC), array.clear(nP), array.clear(nIv)
+    array.clear(sK), array.clear(sC), array.clear(sP), array.clear(sIv), array.clear(sDt)
+    array.clear(nK), array.clear(nC), array.clear(nP), array.clear(nIv), array.clear(nDt)
     f_clear()
-    [okS, spotS, dteS, multS, fivS, yS, mS, dS] = f_parse(structTxt, sK, sC, sP, sIv)
+    [okS, spotS, dteS, multS, fivS, yS, mS, dS] = f_parse(structTxt, sK, sC, sP, sIv, sDt)
     if not okS
         array.push(labs, label.new(bar_index, high, "GEX Profile: no valid structure chain.\nSettings -> paste header + strike rows (see tooltip).",
              style = label.style_label_left, color = color.new(color.orange, 10), textcolor = color.black, size = size.normal))
     else
-        [flip, cw, pw, cw2, pw2, em, totGex] = f_levels(sK, sC, sP, sIv, fivS, dteS, multS, spotS, sGx)
+        [flip, cw, pw, cw2, pw2, em, totGex] = f_levels(sK, sC, sP, sIv, sDt, fivS, dteS, multS, spotS, sGx)
         g_flip := na(flip) ? na : flip + offset
         g_cw   := na(cw) ? na : cw + offset
         g_pw   := na(pw) ? na : pw + offset
@@ -234,6 +314,12 @@ if barstate.islast
         if showEM and em > 0
             f_hline(spotS + em + offset, color.new(color.blue, 55), 1, line.style_dotted)
             f_hline(spotS - em + offset, color.new(color.blue, 55), 1, line.style_dotted)
+        // ---- second-order flows (vanna / charm) ----
+        [totVan, vanK, totChm, chmK] = f_flows(sK, sC, sP, sIv, sDt, fivS, dteS, multS, spotS)
+        if showVanna and not na(vanK)
+            f_hline(vanK + offset, color.new(color.purple, 40), 1, line.style_dotted)
+        if showCharm and not na(chmK)
+            f_hline(chmK + offset, color.new(color.aqua, 45), 1, line.style_dotted)
         // ---- histogram (per-strike signed GEX) ----
         if showHist
             maxAbs = 0.0
@@ -252,11 +338,11 @@ if barstate.islast
                         array.push(boxes, box.new(x0, k + step, x0 + w, k - step,
                              border_color = na, bgcolor = v >= 0 ? posCol : negCol))
         // ---- near map ----
-        [okN, spotN, dteN, multN, fivN, yN, mN, dN] = f_parse(nearTxt, nK, nC, nP, nIv)
+        [okN, spotN, dteN, multN, fivN, yN, mN, dN] = f_parse(nearTxt, nK, nC, nP, nIv, nDt)
         float ncw = na
         float npw = na
         if okN and showNear
-            [nflip, ncw_, npw_, ncw2, npw2, emN, totN] = f_levels(nK, nC, nP, nIv, fivN, dteN, multN, spotN, nGx)
+            [nflip, ncw_, npw_, ncw2, npw2, emN, totN] = f_levels(nK, nC, nP, nIv, nDt, fivN, dteN, multN, spotN, nGx)
             ncw := ncw_
             npw := npw_
             if not na(ncw)
@@ -274,9 +360,17 @@ if barstate.islast
             snapT = timestamp("GMT", yS, mS, dS, 23, 59)
             stale := (timenow - snapT) > 1000 * 60 * 60 * 36
             dateTxt = str.tostring(yS) + "-" + (mS < 10 ? "0" : "") + str.tostring(mS) + "-" + (dS < 10 ? "0" : "") + str.tostring(dS)
+        // vanna > 0: falling vol forces dealers to BUY (and rising vol to sell).
+        // charm > 0: the passage of time forces buying, < 0 selling pressure.
+        flowTxt = not showFlow or (totVan == 0.0 and totChm == 0.0) ? "" :
+             "\nVanna " + (totVan > 0 ? "+" : "") + str.tostring(totVan / 1e6, "#.#") + "M (vol down = " + (totVan > 0 ? "BUY" : "SELL") + ")" +
+             (na(vanK) ? "" : " @" + str.tostring(vanK + offset, format.mintick)) +
+             "  |  Charm " + (totChm > 0 ? "+" : "") + str.tostring(totChm / 1e6, "#.#") + "M (time = " + (totChm > 0 ? "buy support" : "sell pressure") + ")" +
+             (na(chmK) ? "" : " @" + str.tostring(chmK + offset, format.mintick))
         txt = regTxt +
              (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
              "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
+             flowTxt +
              (na(ncw) ? "" : "\nNear CW " + str.tostring(ncw + offset, format.mintick) + " | Near PW " + str.tostring(npw + offset, format.mintick)) +
              "\nChain: " + dateTxt + (stale ? "  !! STALE — refresh the paste !!" : "")
         array.push(labs, label.new(bar_index, high, txt, style = label.style_label_left,
