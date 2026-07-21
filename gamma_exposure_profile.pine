@@ -589,7 +589,9 @@ if barstate.islast
              (na(chmK) ? "" : " @" + str.tostring(chmK + offset, format.mintick))
         // v1.3.1: show which market block is active (multi-market pastes)
         dbgTxt = showDbg ? "\nrows: " + (dbgS == "" ? "none" : dbgS) + "| spot " + str.tostring(spotS, format.mintick) : ""
-        txt = (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
+        // Version im Label: ohne sie ist beim Debuggen nicht feststellbar,
+        // welcher Stand auf dem Chart laeuft.
+        txt = "v1.3.3  " + (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
              (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
              "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
              flowTxt +
