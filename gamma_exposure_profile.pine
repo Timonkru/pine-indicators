@@ -159,7 +159,12 @@ f_parse(txt, ks, cs, ps, ivs, dts, wantMap, wantMkt, defMap) =>
     int   yy = 0
     int   mm = 0
     int   dd = 0
-    blkOn = defMap == wantMap   // state before the first header line
+    // FAIL CLOSED (v1.3.3): rows before the first recognised header are NOT
+    // collected. Previously this started as true, so a header that failed to
+    // be recognised for any reason (an invisible character from copy-paste is
+    // enough) silently disabled the market filter for that whole field - the
+    // rows loaded unfiltered while the header values stayed empty.
+    blkOn = false
     if str.length(txt) > 0
         // strip whitespace globally — the format is purely numeric/keyword
         clean = str.replace_all(str.replace_all(str.replace_all(txt, "\r", ""), "\t", ""), " ", "")
@@ -168,11 +173,15 @@ f_parse(txt, ks, cs, ps, ivs, dts, wantMap, wantMkt, defMap) =>
             ln = array.get(lines, li)
             if str.length(ln) == 0
                 continue
-            if str.startswith(ln, "#")
+            // A header is any line carrying a key=value pair. Data rows are
+            // purely numeric with semicolons and never contain "=", so this
+            // recognises headers even with a stray leading character.
+            if str.contains(ln, "=")
                 // each header starts a new block; read gating keys first
                 blkMkt = ""
                 blkMap = defMap
-                toks0 = str.split(str.substring(ln, 1), ";")
+                hdrBody = str.startswith(ln, "#") ? str.substring(ln, 1) : ln
+                toks0 = str.split(hdrBody, ";")
                 for ti = 0 to array.size(toks0) - 1
                     kv = str.split(array.get(toks0, ti), "=")
                     if array.size(kv) == 2
@@ -183,7 +192,7 @@ f_parse(txt, ks, cs, ps, ivs, dts, wantMap, wantMkt, defMap) =>
                 blkOn := blkMap == wantMap and (blkMkt == "" or blkMkt == wantMkt)
                 if not blkOn
                     continue
-                toks = str.split(str.substring(ln, 1), ";")
+                toks = str.split(hdrBody, ";")
                 for ti = 0 to array.size(toks) - 1
                     kv = str.split(array.get(toks, ti), "=")
                     if array.size(kv) == 2
