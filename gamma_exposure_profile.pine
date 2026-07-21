@@ -533,7 +533,8 @@ if barstate.islast
              (na(vanK) ? "" : " @" + str.tostring(vanK + offset, format.mintick)) +
              "  |  Charm " + (totChm > 0 ? "+" : "") + str.tostring(totChm / 1e6, "#.#") + "M (time = " + (totChm > 0 ? "buy support" : "sell pressure") + ")" +
              (na(chmK) ? "" : " @" + str.tostring(chmK + offset, format.mintick))
-        txt = regTxt +
+        // v1.3.1: show which market block is active (multi-market pastes)
+        txt = (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
              (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
              "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
              flowTxt +
