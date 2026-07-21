@@ -96,7 +96,9 @@ f_gamma(S, K, T, sig) =>
     g
 
 // ------------------------------------------------------------- parser -----
-// Returns [ok, spot, dte, mult, fallbackIv, y, m, d] and fills the arrays.
+// Returns [ok, spot, dte, mult, fallbackIv, atmIv, y, m, d]; atmIv comes from
+// the optional header key aiv= (ATM IV of the FULL chain incl. zero-OI rows
+// - the paste only carries OI>0, so the expected move would drift without it).
 // dts: per-strike days-to-expiry (optional 5th field; -1 = use the header dte).
 // v1.1: gamma grows ~1/sqrt(T) — when the rows span several expiries, one
 // averaged dte skews the flip (measured: 368 points on a Dow chain).
@@ -106,6 +108,7 @@ f_parse(txt, ks, cs, ps, ivs, dts) =>
     float dte  = na
     float mult = 1.0
     float fiv  = 0.2
+    float aiv  = na
     int   yy = 0
     int   mm = 0
     int   dd = 0
@@ -132,6 +135,8 @@ f_parse(txt, ks, cs, ps, ivs, dts) =>
                             mult := nz(str.tonumber(v), 1.0)
                         else if k == "iv"
                             fiv := nz(str.tonumber(v), 0.2)
+                        else if k == "aiv"
+                            aiv := str.tonumber(v)
                         else if k == "date"
                             dp = str.split(v, "-")
                             if array.size(dp) == 3
@@ -153,7 +158,7 @@ f_parse(txt, ks, cs, ps, ivs, dts) =>
                         array.push(ivs, na(iv) ? -1.0 : iv)   // -1 = use fallback
                         array.push(dts, na(dt) or dt <= 0 ? -1.0 : dt)   // -1 = header dte
         ok := array.size(ks) > 0 and not na(spot) and not na(dte) and dte > 0
-    [ok, spot, dte, mult, fiv, yy, mm, dd]
+    [ok, spot, dte, mult, fiv, aiv, yy, mm, dd]
 
 // Total signed GEX (USD per 1% move) at a hypothetical spot S.
 f_totalGex(S, ks, cs, ps, ivs, dts, fiv, Thdr, mult) =>
@@ -168,41 +173,56 @@ f_totalGex(S, ks, cs, ps, ivs, dts, fiv, Thdr, mult) =>
     total
 
 // Levels of one map: [flip, cw, pw, cw2, pw2, emAbs, totalAtSpot].
+// aggK/gexOut are filled with the PER-STRIKE aggregated profile.
 // Flip = zero crossing of total GEX over a spot grid (nearest to spot).
 // Walls = strikes with the largest positive / most negative per-strike GEX.
-f_levels(ks, cs, ps, ivs, dts, fiv, dte, mult, spot, gexOut) =>
+f_levels(ks, cs, ps, ivs, dts, fiv, aivH, dte, mult, spot, aggK, gexOut) =>
     T = dte / 365.0   // header dte -> fallback for rows without field 5
     n = array.size(ks)
     // per-strike signed GEX at the current spot (also feeds the histogram)
     array.clear(gexOut)
+    array.clear(aggK)
     float cw = na, float pw = na, float cw2 = na, float pw2 = na
     maxPos = 0.0, maxPos2 = 0.0
     minNeg = 0.0, minNeg2 = 0.0
     float ivAtm = fiv
-    minDist = 1e18
-    for i = 0 to n - 1
-        iv = array.get(ivs, i)
-        sig = iv > 0 ? iv : fiv
-        k = array.get(ks, i)
-        dtI = array.get(dts, i)
-        Ti = dtI > 0 ? dtI / 365.0 : T
-        v = f_gamma(spot, k, Ti, sig) * (array.get(cs, i) - array.get(ps, i)) * mult * spot * spot * 0.01
-        array.push(gexOut, v)
-        if v > maxPos
-            maxPos2 := maxPos, cw2 := cw
-            maxPos := v,       cw := k
-        else if v > maxPos2
-            maxPos2 := v, cw2 := k
-        if v < minNeg
-            minNeg2 := minNeg, pw2 := pw
-            minNeg := v,       pw := k
-        else if v < minNeg2
-            minNeg2 := v, pw2 := k
-        d = math.abs(k - spot)
-        if d < minDist
-            minDist := d
-            ivAtm := sig
-    // flip: coarse grid + linear interpolation, crossing closest to spot
+    // v1.2.1: since v1.2 each pasted row is ONE OPTION (own iv, own dte).
+    // Walls and the histogram must aggregate per STRIKE - otherwise a "wall"
+    // is just the single biggest expiry line and CW/CW2 can be the same
+    // strike twice. Rows arrive strike-sorted, so consecutive equals sum up.
+    float curK = na
+    accV = 0.0
+    for i = 0 to n
+        float k = i < n ? array.get(ks, i) : na
+        float v = 0.0
+        if i < n
+            iv = array.get(ivs, i)
+            sig = iv > 0 ? iv : fiv
+            dtI = array.get(dts, i)
+            Ti = dtI > 0 ? dtI / 365.0 : T
+            v := f_gamma(spot, k, Ti, sig) * (array.get(cs, i) - array.get(ps, i)) * mult * spot * spot * 0.01
+        if not na(curK) and (na(k) or k != curK)
+            array.push(aggK, curK)
+            array.push(gexOut, accV)
+            if accV > maxPos
+                maxPos2 := maxPos, cw2 := cw
+                maxPos := accV,    cw := curK
+            else if accV > maxPos2
+                maxPos2 := accV, cw2 := curK
+            if accV < minNeg
+                minNeg2 := minNeg, pw2 := pw
+                minNeg := accV,    pw := curK
+            else if accV < minNeg2
+                minNeg2 := accV, pw2 := curK
+            accV := 0.0
+        if not na(k)
+            curK := k
+            accV += v
+    // flip: two-stage search. Stage 1 scans the whole strike span on a coarse
+    // grid (finds every crossing); stage 2 rescans one coarse step around the
+    // crossing nearest to spot on a fine grid. v1.2.1: the single coarse pass
+    // quantized the flip to ~1/120 of the strike span (~100 points on a DAX
+    // chain) — the refine pass brings it to a few points.
     kLo = array.min(ks)
     kHi = array.max(ks)
     float flip = na
@@ -220,7 +240,54 @@ f_levels(ks, cs, ps, ivs, dts, fiv, dte, mult, spot, gexOut) =>
                 flip := x
         prevS := s
         prevV := v
-    em = spot * ivAtm * math.sqrt(1.0 / 365.0)
+    if not na(flip)
+        // stage 2: fine rescan +/- one coarse step around the found crossing
+        step1 = (kHi - kLo) / steps
+        fLo = math.max(kLo, flip - step1)
+        fHi = math.min(kHi, flip + step1)
+        float flip2 = na
+        flip2Dist = 1e18
+        prevS := fLo
+        prevV := f_totalGex(fLo, ks, cs, ps, ivs, dts, fiv, T, mult)
+        for j = 1 to 60
+            s = fLo + (fHi - fLo) * j / 60
+            v = f_totalGex(s, ks, cs, ps, ivs, dts, fiv, T, mult)
+            if (prevV < 0 and v >= 0) or (prevV >= 0 and v < 0)
+                x = prevS + (s - prevS) * (0 - prevV) / (v - prevV)
+                if math.abs(x - spot) < flip2Dist
+                    flip2Dist := math.abs(x - spot)
+                    flip2 := x
+            prevS := s
+            prevV := v
+        if not na(flip2)
+            flip := flip2
+    // v1.2.1: ATM IV = median of the 6 rows closest to spot, EM over
+    // sqrt(252) trading days - both exactly as in the reference computation.
+    float[] selDist = array.new_float()
+    float[] selIv   = array.new_float()
+    for i = 0 to n - 1
+        array.push(selDist, math.abs(array.get(ks, i) - spot))
+        ivR = array.get(ivs, i)
+        array.push(selIv, ivR > 0 ? ivR : fiv)
+    float[] atm6 = array.new_float()
+    reps = math.min(6, array.size(selDist))
+    if reps > 0
+        for j = 1 to reps
+            bi = 0
+            bv = array.get(selDist, 0)
+            for i = 1 to array.size(selDist) - 1
+                if array.get(selDist, i) < bv
+                    bv := array.get(selDist, i)
+                    bi := i
+            array.push(atm6, array.get(selIv, bi))
+            array.set(selDist, bi, 1e18)
+        array.sort(atm6)
+        m = array.size(atm6)
+        ivAtm := m % 2 == 1 ? array.get(atm6, m / 2) :
+             (array.get(atm6, m / 2 - 1) + array.get(atm6, m / 2)) / 2.0
+    if not na(aivH)
+        ivAtm := aivH   // full-chain ATM IV from the header wins when provided
+    em = spot * ivAtm / math.sqrt(252.0)
     [flip, cw, pw, cw2, pw2, em, f_totalGex(spot, ks, cs, ps, ivs, dts, fiv, T, mult)]
 
 // Second-order dealer flows at the current spot — same sign convention as GEX
@@ -234,21 +301,36 @@ f_flows(ks, cs, ps, ivs, dts, fiv, dte, mult, spot) =>
     float tv = 0.0, float tc = 0.0
     float vk = na, float ck = na
     maxV = 0.0, maxC = 0.0
-    for i = 0 to array.size(ks) - 1
-        iv  = array.get(ivs, i)
-        sig = iv > 0 ? iv : fiv
-        k   = array.get(ks, i)
-        dtI = array.get(dts, i)
-        Ti  = dtI > 0 ? dtI / 365.0 : T
-        net = array.get(cs, i) - array.get(ps, i)
-        v = f_vanna(spot, k, Ti, sig) * net * mult * spot * 0.01
-        c = f_charm(spot, k, Ti, sig) * net * mult * spot / 252.0
-        tv += v
-        tc += c
-        if math.abs(v) > maxV
-            maxV := math.abs(v), vk := k
-        if math.abs(c) > maxC
-            maxC := math.abs(c), ck := k
+    // per-strike aggregation (rows are single options, strike-sorted)
+    float curK = na
+    accV = 0.0
+    accC = 0.0
+    n2 = array.size(ks)
+    for i = 0 to n2
+        float k = i < n2 ? array.get(ks, i) : na
+        float v = 0.0
+        float c = 0.0
+        if i < n2
+            iv  = array.get(ivs, i)
+            sig = iv > 0 ? iv : fiv
+            dtI = array.get(dts, i)
+            Ti  = dtI > 0 ? dtI / 365.0 : T
+            net = array.get(cs, i) - array.get(ps, i)
+            v := f_vanna(spot, k, Ti, sig) * net * mult * spot * 0.01
+            c := f_charm(spot, k, Ti, sig) * net * mult * spot / 252.0
+            tv += v
+            tc += c
+        if not na(curK) and (na(k) or k != curK)
+            if math.abs(accV) > maxV
+                maxV := math.abs(accV), vk := curK
+            if math.abs(accC) > maxC
+                maxC := math.abs(accC), ck := curK
+            accV := 0.0
+            accC := 0.0
+        if not na(k)
+            curK := k
+            accV += v
+            accC += c
     [tv, vk, tc, ck]
 
 // ------------------------------------------------------------ compute -----
@@ -257,12 +339,14 @@ var float[] sC  = array.new_float()
 var float[] sP  = array.new_float()
 var float[] sIv = array.new_float()
 var float[] sDt = array.new_float()
-var float[] sGx = array.new_float()
+var float[] sKA = array.new_float()   // per-strike aggregated strikes
+var float[] sGx = array.new_float()   // per-strike aggregated GEX
 var float[] nK  = array.new_float()
 var float[] nC  = array.new_float()
 var float[] nP  = array.new_float()
 var float[] nIv = array.new_float()
 var float[] nDt = array.new_float()
+var float[] nKA = array.new_float()
 var float[] nGx = array.new_float()
 
 var box[]   boxes = array.new_box()
@@ -291,12 +375,12 @@ if barstate.islast
     array.clear(sK), array.clear(sC), array.clear(sP), array.clear(sIv), array.clear(sDt)
     array.clear(nK), array.clear(nC), array.clear(nP), array.clear(nIv), array.clear(nDt)
     f_clear()
-    [okS, spotS, dteS, multS, fivS, yS, mS, dS] = f_parse(structTxt, sK, sC, sP, sIv, sDt)
+    [okS, spotS, dteS, multS, fivS, aivS, yS, mS, dS] = f_parse(structTxt, sK, sC, sP, sIv, sDt)
     if not okS
         array.push(labs, label.new(bar_index, high, "GEX Profile: no valid structure chain.\nSettings -> paste header + strike rows (see tooltip).",
              style = label.style_label_left, color = color.new(color.orange, 10), textcolor = color.black, size = size.normal))
     else
-        [flip, cw, pw, cw2, pw2, em, totGex] = f_levels(sK, sC, sP, sIv, sDt, fivS, dteS, multS, spotS, sGx)
+        [flip, cw, pw, cw2, pw2, em, totGex] = f_levels(sK, sC, sP, sIv, sDt, fivS, aivS, dteS, multS, spotS, sKA, sGx)
         g_flip := na(flip) ? na : flip + offset
         g_cw   := na(cw) ? na : cw + offset
         g_pw   := na(pw) ? na : pw + offset
@@ -327,22 +411,22 @@ if barstate.islast
                 maxAbs := math.max(maxAbs, math.abs(v))
             if maxAbs > 0
                 x0 = bar_index + gap
-                nS = array.size(sK)
+                nS = array.size(sKA)
                 // half the median strike step as bar half-height
-                step = nS > 1 ? (array.max(sK) - array.min(sK)) / (nS - 1) * 0.4 : spotS * 0.001
+                step = nS > 1 ? (array.max(sKA) - array.min(sKA)) / (nS - 1) * 0.4 : spotS * 0.001
                 for i = 0 to nS - 1
                     v = array.get(sGx, i)
                     w = int(math.round(profW * math.abs(v) / maxAbs))
                     if w > 0
-                        k = array.get(sK, i) + offset
+                        k = array.get(sKA, i) + offset
                         array.push(boxes, box.new(x0, k + step, x0 + w, k - step,
                              border_color = na, bgcolor = v >= 0 ? posCol : negCol))
         // ---- near map ----
-        [okN, spotN, dteN, multN, fivN, yN, mN, dN] = f_parse(nearTxt, nK, nC, nP, nIv, nDt)
+        [okN, spotN, dteN, multN, fivN, aivN, yN, mN, dN] = f_parse(nearTxt, nK, nC, nP, nIv, nDt)
         float ncw = na
         float npw = na
         if okN and showNear
-            [nflip, ncw_, npw_, ncw2, npw2, emN, totN] = f_levels(nK, nC, nP, nIv, nDt, fivN, dteN, multN, spotN, nGx)
+            [nflip, ncw_, npw_, ncw2, npw2, emN, totN] = f_levels(nK, nC, nP, nIv, nDt, fivN, aivN, dteN, multN, spotN, nKA, nGx)
             ncw := ncw_
             npw := npw_
             if not na(ncw)
