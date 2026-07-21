@@ -45,26 +45,39 @@ fmtTip = "Block header: #market=DAX;spot=24915.5;dte=21.4;mult=5;iv=0.18;aiv=0.1
 // gescheitert. Jetzt bestimmt das FELD den Markt: Symbol erkannt -> zugehoeriges
 // Feld gelesen. Nichts zu filtern, nichts zu verwechseln.
 genS = input.text_area("", "Any market — structure", tooltip = fmtTip, group = grpFmt)
+genS2 = input.text_area("", "Any market — structure (part 2)", group = grpFmt)
 genN = input.text_area("", "Any market — near (0-5 DTE)", group = grpFmt,
      tooltip = "Used when the market-specific fields below are empty. Enough for a single-market setup.")
 
 grpDAX = "DAX chain"
 daxS = input.text_area("", "DAX — structure", group = grpDAX)
+daxS2 = input.text_area("", "DAX — structure (part 2)", group = grpDAX,
+     tooltip = "Only needed when one field cannot hold the whole card (TradingView truncates a field at about 10,900 characters). The seed writer splits automatically and names the parts.")
 daxN = input.text_area("", "DAX — near", group = grpDAX)
 grpNQ = "NQ / Nasdaq chain"
 nqS = input.text_area("", "NQ — structure", group = grpNQ)
+nqS2 = input.text_area("", "NQ — structure (part 2)", group = grpNQ,
+     tooltip = "Only needed when one field cannot hold the whole card (TradingView truncates a field at about 10,900 characters). The seed writer splits automatically and names the parts.")
 nqN = input.text_area("", "NQ — near", group = grpNQ)
 grpDOW = "DOW chain"
 dowS = input.text_area("", "DOW — structure", group = grpDOW)
+dowS2 = input.text_area("", "DOW — structure (part 2)", group = grpDOW,
+     tooltip = "Only needed when one field cannot hold the whole card (TradingView truncates a field at about 10,900 characters). The seed writer splits automatically and names the parts.")
 dowN = input.text_area("", "DOW — near", group = grpDOW)
 grpGLD = "GOLD chain"
 gldS = input.text_area("", "GOLD — structure", group = grpGLD)
+gldS2 = input.text_area("", "GOLD — structure (part 2)", group = grpGLD,
+     tooltip = "Only needed when one field cannot hold the whole card (TradingView truncates a field at about 10,900 characters). The seed writer splits automatically and names the parts.")
 gldN = input.text_area("", "GOLD — near", group = grpGLD)
 grpFT = "FTSE chain"
 ftS = input.text_area("", "FTSE — structure", group = grpFT)
+ftS2 = input.text_area("", "FTSE — structure (part 2)", group = grpFT,
+     tooltip = "Only needed when one field cannot hold the whole card (TradingView truncates a field at about 10,900 characters). The seed writer splits automatically and names the parts.")
 ftN = input.text_area("", "FTSE — near", group = grpFT)
 grpSPX = "SPX chain"
 spxS = input.text_area("", "SPX — structure", group = grpSPX)
+spxS2 = input.text_area("", "SPX — structure (part 2)", group = grpSPX,
+     tooltip = "Only needed when one field cannot hold the whole card (TradingView truncates a field at about 10,900 characters). The seed writer splits automatically and names the parts.")
 spxN = input.text_area("", "SPX — near", group = grpSPX)
 
 grpM = "Market"
@@ -463,9 +476,15 @@ if barstate.islast
     // Markt -> Feldpaar. Ist das Marktfeld leer, greift das generische Paar.
     mSx = wantMkt == "DAX" ? daxS : wantMkt == "NQ" ? nqS : wantMkt == "DOW" ? dowS :
          wantMkt == "GOLD" ? gldS : wantMkt == "FTSE" ? ftS : wantMkt == "SPX" ? spxS : ""
+    // v1.6: zweiter Teil derselben Karte wird angehaengt. Gefahrlos, weil beide
+    // Felder demselben Markt gehoeren - es wird nichts ausgewaehlt, nur ergaenzt.
+    mSx2 = wantMkt == "DAX" ? daxS2 : wantMkt == "NQ" ? nqS2 : wantMkt == "DOW" ? dowS2 :
+         wantMkt == "GOLD" ? gldS2 : wantMkt == "FTSE" ? ftS2 : wantMkt == "SPX" ? spxS2 : ""
     mNx = wantMkt == "DAX" ? daxN : wantMkt == "NQ" ? nqN : wantMkt == "DOW" ? dowN :
          wantMkt == "GOLD" ? gldN : wantMkt == "FTSE" ? ftN : wantMkt == "SPX" ? spxN : ""
-    structTxt = str.length(mSx) > 0 ? mSx : genS
+    structBase = str.length(mSx) > 0 ? mSx : genS
+    structExtra = str.length(mSx) > 0 ? mSx2 : genS2
+    structTxt = str.length(structExtra) > 0 ? structBase + "\n" + structExtra : structBase
     nearTxt   = str.length(mNx) > 0 ? mNx : genN
     srcTxt    = str.length(mSx) > 0 ? wantMkt + " field" : "generic field"
     okS = false
@@ -578,7 +597,7 @@ if barstate.islast
         dbgTxt = showDbg ? "\n" + dbgS + " | spot " + str.tostring(spotS, format.mintick) : ""
         // Version im Label: ohne sie ist beim Debuggen nicht feststellbar,
         // welcher Stand auf dem Chart laeuft.
-        txt = "v1.5  " + (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
+        txt = "v1.6  " + (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
              (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
              "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
              flowTxt +
