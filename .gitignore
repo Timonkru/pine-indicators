@@ -12,3 +12,7 @@ desktop.ini
 # ---------------------------------------------------------------------------
 kasse_signal_engine*.pine
 *signal_engine*.pine
+
+# Interne Arbeitsdokumente — nie ins oeffentliche Repo (Timon, 2026-07-20)
+PUBLISHING_RULES.md
+TV_DESCRIPTIONS.md
