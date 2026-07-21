@@ -39,23 +39,38 @@ fmtTip = "Block header: #market=DAX;spot=24915.5;dte=21.4;mult=5;iv=0.18;aiv=0.1
      "spot = underlying index/spot price, dte = days to expiry (representative), " +
      "mult = contract multiplier, iv = fallback implied vol (decimal) for rows without one, " +
      "date = snapshot date (optional, enables the staleness warning)."
-paste1 = input.text_area("#spot=24900;dte=21;mult=5;iv=0.18\n24000;1200;8300\n24200;900;5100\n24400;1500;4200\n24600;2100;3900\n24800;2600;3000\n25000;5200;2800\n25200;4100;1900\n25400;2600;1200\n25600;6800;900\n25800;1900;600",
-     "Chain paste 1", tooltip = fmtTip, group = grpFmt)
-paste2 = input.text_area("", "Chain paste 2", group = grpFmt,
-     tooltip = "Without a map= key, blocks here count as the NEAR card (legacy behaviour of the old second field).")
-paste3 = input.text_area("", "Chain paste 3", group = grpFmt)
-paste4 = input.text_area("", "Chain paste 4", group = grpFmt)
-paste5 = input.text_area("", "Chain paste 5", group = grpFmt)
-paste6 = input.text_area("", "Chain paste 6", group = grpFmt)
-paste7 = input.text_area("", "Chain paste 7", group = grpFmt)
-paste8 = input.text_area("", "Chain paste 8", group = grpFmt)
-paste9 = input.text_area("", "Chain paste 9", group = grpFmt)
-paste10 = input.text_area("", "Chain paste 10", group = grpFmt)
+// v1.5: EIN EIGENES FELDPAAR JE MARKT (Timons Entwurf). Vorher lagen alle
+// Maerkte in generischen Feldern und wurden ueber market=-Schluessel im Header
+// gefiltert - vier Anlaeufe, den Filter zuverlaessig zu bekommen, sind
+// gescheitert. Jetzt bestimmt das FELD den Markt: Symbol erkannt -> zugehoeriges
+// Feld gelesen. Nichts zu filtern, nichts zu verwechseln.
+genS = input.text_area("", "Any market — structure", tooltip = fmtTip, group = grpFmt)
+genN = input.text_area("", "Any market — near (0-5 DTE)", group = grpFmt,
+     tooltip = "Used when the market-specific fields below are empty. Enough for a single-market setup.")
+
+grpDAX = "DAX chain"
+daxS = input.text_area("", "DAX — structure", group = grpDAX)
+daxN = input.text_area("", "DAX — near", group = grpDAX)
+grpNQ = "NQ / Nasdaq chain"
+nqS = input.text_area("", "NQ — structure", group = grpNQ)
+nqN = input.text_area("", "NQ — near", group = grpNQ)
+grpDOW = "DOW chain"
+dowS = input.text_area("", "DOW — structure", group = grpDOW)
+dowN = input.text_area("", "DOW — near", group = grpDOW)
+grpGLD = "GOLD chain"
+gldS = input.text_area("", "GOLD — structure", group = grpGLD)
+gldN = input.text_area("", "GOLD — near", group = grpGLD)
+grpFT = "FTSE chain"
+ftS = input.text_area("", "FTSE — structure", group = grpFT)
+ftN = input.text_area("", "FTSE — near", group = grpFT)
+grpSPX = "SPX chain"
+spxS = input.text_area("", "SPX — structure", group = grpSPX)
+spxN = input.text_area("", "SPX — near", group = grpSPX)
 
 grpM = "Market"
-showDbg = input.bool(false, "Diagnostics: rows accepted per paste field", group = grpM,
-     tooltip = "Shows F1..F10 with the number of structure rows each field contributed. " +
-     "Exactly one field should be non-zero when you paste one market per field.")
+showDbg = input.bool(false, "Diagnostics: show which field was read", group = grpM,
+     tooltip = "Prints the source field and the number of rows parsed - useful to confirm " +
+     "the chart is reading the chain you think it is.")
 mktSel = input.string("Auto", "Market", options = ["Auto", "DAX", "NQ", "DOW", "GOLD", "FTSE", "SPX"], group = grpM,
      tooltip = "Which market= blocks to use. Auto detects from the chart symbol. Blocks WITHOUT a market= key always apply (single-market use).")
 mktKey = input.string("", "Market key override (free text)", group = grpM,
@@ -149,43 +164,6 @@ f_detect() =>
 // v1.3: wantMap = "structure"|"near" - which card this call collects.
 // wantMkt = the market key to match; "" accepts only key-less blocks.
 // defMap  = card assigned to key-less blocks in this field (legacy layout).
-// ---- Schritt 1: AUSWAHL ---------------------------------------------------
-// Gibt aus einem Paste-Feld nur die Bloecke zurueck, die zu Markt und Karte
-// passen — als reiner Text. v1.4: Auswahl und Rechnung sind getrennt. Vorher
-// filterte der Parser waehrend des Einlesens in GEMEINSAME Arrays; ging das
-// Tor faelschlich auf, rechnete ein fremder Markt still mit. Ein Textschnitt
-// kann diesen Fehler nicht machen: was nicht im Ergebnis steht, existiert
-// fuer die Rechnung nicht.
-f_slice(txt, wantMap, wantMkt, defMap) =>
-    out = ""
-    keep = false
-    if str.length(txt) > 0
-        clean = str.replace_all(str.replace_all(str.replace_all(txt, "\r", ""), "\t", ""), " ", "")
-        lines_ = str.split(clean, "\n")
-        for li = 0 to array.size(lines_) - 1
-            ln = array.get(lines_, li)
-            if str.length(ln) > 0
-                // Header = jede Zeile mit key=value; Datenzeilen sind rein
-                // numerisch mit Semikolon und enthalten nie ein "=".
-                if str.contains(ln, "=")
-                    mkt = ""
-                    mp = defMap
-                    body = str.startswith(ln, "#") ? str.substring(ln, 1) : ln
-                    toks = str.split(body, ";")
-                    for ti = 0 to array.size(toks) - 1
-                        kv = str.split(array.get(toks, ti), "=")
-                        if array.size(kv) == 2
-                            key = str.lower(array.get(kv, 0))
-                            if key == "market"
-                                mkt := str.upper(array.get(kv, 1))
-                            else if key == "map"
-                                mp := str.lower(array.get(kv, 1))
-                    keep := mp == wantMap and (mkt == "" or mkt == wantMkt)
-                if keep
-                    out := out + ln + "\n"
-    out
-
-// ---- Schritt 2: RECHNUNG --------------------------------------------------
 // Parst einen bereits ausgewaehlten Textabschnitt EINES Marktes. Kein Filter,
 // kein Zustand — das ist der Parser, der seit v1.0 nachweislich korrekt ist.
 // dts: Restlaufzeit je Strike (optionales 5. Feld; -1 = Header-dte nutzen).
@@ -482,32 +460,23 @@ if barstate.islast
     // v1.3: resolve the wanted market, then collect BOTH cards across all six
     // fields. Key-less blocks always apply (single-market legacy use).
     wantMkt = mktKey != "" ? str.upper(mktKey) : mktSel != "Auto" ? mktSel : f_detect()
-    fieldTxt = array.from(paste1, paste2, paste3, paste4, paste5, paste6,
-         paste7, paste8, paste9, paste10)
-    // Feld 2 zaehlt ohne map= als NAH (Altverhalten des frueheren zweiten
-    // Feldes); alle uebrigen als STRUKTUR. Mit map= im Header ist es egal.
-    fieldDef = array.from("structure", "near", "structure", "structure", "structure",
-         "structure", "structure", "structure", "structure", "structure")
+    // Markt -> Feldpaar. Ist das Marktfeld leer, greift das generische Paar.
+    mSx = wantMkt == "DAX" ? daxS : wantMkt == "NQ" ? nqS : wantMkt == "DOW" ? dowS :
+         wantMkt == "GOLD" ? gldS : wantMkt == "FTSE" ? ftS : wantMkt == "SPX" ? spxS : ""
+    mNx = wantMkt == "DAX" ? daxN : wantMkt == "NQ" ? nqN : wantMkt == "DOW" ? dowN :
+         wantMkt == "GOLD" ? gldN : wantMkt == "FTSE" ? ftN : wantMkt == "SPX" ? spxN : ""
+    structTxt = str.length(mSx) > 0 ? mSx : genS
+    nearTxt   = str.length(mNx) > 0 ? mNx : genN
+    srcTxt    = str.length(mSx) > 0 ? wantMkt + " field" : "generic field"
     okS = false
     float spotS = na, float dteS = na, float multS = 1.0
     float fivS = 0.2, float aivS = na
     yS = 0
     mS = 0
     dS = 0
-    // v1.4: EIN Feld pro Karte. Das erste Feld mit einem passenden Block
-    // gewinnt, alle weiteren werden ignoriert — damit koennen sich zwei
-    // Maerkte strukturell nicht mehr vermischen (der Packer legt jeden Block
-    // ohnehin vollstaendig in genau ein Feld).
-    sliceS = ""
-    srcS = 0
-    for fi = 0 to 9
-        if str.length(sliceS) == 0
-            sl = f_slice(array.get(fieldTxt, fi), "structure", wantMkt, array.get(fieldDef, fi))
-            if str.length(sl) > 0
-                sliceS := sl
-                srcS := fi + 1
-    [o, sp, dt_, mu, fv, av, y_, m_, d_] = f_parse(sliceS, sK, sC, sP, sIv, sDt)
-    dbgS = showDbg ? "F" + str.tostring(srcS) + ":" + str.tostring(array.size(sK)) + " " : ""
+    // v1.5: das Feld IST der Markt - nichts zu filtern, nichts zu verwechseln.
+    [o, sp, dt_, mu, fv, av, y_, m_, d_] = f_parse(structTxt, sK, sC, sP, sIv, sDt)
+    dbgS = srcTxt + ", " + str.tostring(array.size(sK)) + " rows"
     if o
         okS := true
         spotS := sp
@@ -569,13 +538,7 @@ if barstate.islast
         okN = false
         float spotN = na, float dteN = na, float multN = 1.0
         float fivN = 0.2, float aivN = na
-        sliceN = ""
-        for fi = 0 to 9
-            if str.length(sliceN) == 0
-                slN = f_slice(array.get(fieldTxt, fi), "near", wantMkt, array.get(fieldDef, fi))
-                if str.length(slN) > 0
-                    sliceN := slN
-        [oN, spN, dtN_, muN, fvN, avN, yN_, mN_, dN_] = f_parse(sliceN, nK, nC, nP, nIv, nDt)
+        [oN, spN, dtN_, muN, fvN, avN, yN_, mN_, dN_] = f_parse(nearTxt, nK, nC, nP, nIv, nDt)
         if oN
             okN := true
             spotN := spN
@@ -612,10 +575,10 @@ if barstate.islast
              "  |  Charm " + (totChm > 0 ? "+" : "") + str.tostring(totChm / 1e6, "#.#") + "M (time = " + (totChm > 0 ? "buy support" : "sell pressure") + ")" +
              (na(chmK) ? "" : " @" + str.tostring(chmK + offset, format.mintick))
         // v1.3.1: show which market block is active (multi-market pastes)
-        dbgTxt = showDbg ? "\nrows: " + (dbgS == "" ? "none" : dbgS) + "| spot " + str.tostring(spotS, format.mintick) : ""
+        dbgTxt = showDbg ? "\n" + dbgS + " | spot " + str.tostring(spotS, format.mintick) : ""
         // Version im Label: ohne sie ist beim Debuggen nicht feststellbar,
         // welcher Stand auf dem Chart laeuft.
-        txt = "v1.4  " + (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
+        txt = "v1.5  " + (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
              (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
              "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
              flowTxt +
