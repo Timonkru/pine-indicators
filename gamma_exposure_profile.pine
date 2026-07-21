@@ -49,6 +49,9 @@ paste5 = input.text_area("", "Chain paste 5", group = grpFmt)
 paste6 = input.text_area("", "Chain paste 6", group = grpFmt)
 
 grpM = "Market"
+showDbg = input.bool(false, "Diagnostics: rows accepted per paste field", group = grpM,
+     tooltip = "Shows F1..F6 with the number of structure rows each field contributed. " +
+     "Exactly one field should be non-zero when you paste one market per field.")
 mktSel = input.string("Auto", "Market", options = ["Auto", "DAX", "NQ", "DOW", "GOLD", "FTSE", "SPX"], group = grpM,
      tooltip = "Which market= blocks to use. Auto detects from the chart symbol. Blocks WITHOUT a market= key always apply (single-market use).")
 mktKey = input.string("", "Market key override (free text)", group = grpM,
@@ -262,15 +265,21 @@ f_levels(ks, cs, ps, ivs, dts, fiv, aivH, dte, mult, spot, aggK, gexOut) =>
             array.push(aggK, curK)
             array.push(gexOut, accV)
             if accV > maxPos
-                maxPos2 := maxPos, cw2 := cw
-                maxPos := accV,    cw := curK
+                maxPos2 := maxPos
+                cw2 := cw
+                maxPos := accV
+                cw := curK
             else if accV > maxPos2
-                maxPos2 := accV, cw2 := curK
+                maxPos2 := accV
+                cw2 := curK
             if accV < minNeg
-                minNeg2 := minNeg, pw2 := pw
-                minNeg := accV,    pw := curK
+                minNeg2 := minNeg
+                pw2 := pw
+                minNeg := accV
+                pw := curK
             else if accV < minNeg2
-                minNeg2 := accV, pw2 := curK
+                minNeg2 := accV
+                pw2 := curK
             accV := 0.0
         if not na(k)
             curK := k
@@ -357,7 +366,8 @@ f_flows(ks, cs, ps, ivs, dts, fiv, dte, mult, spot) =>
     T = dte / 365.0   // header dte -> fallback
     float tv = 0.0, float tc = 0.0
     float vk = na, float ck = na
-    maxV = 0.0, maxC = 0.0
+    maxV = 0.0
+    maxC = 0.0
     // per-strike aggregation (rows are single options, strike-sorted)
     float curK = na
     accV = 0.0
@@ -379,9 +389,11 @@ f_flows(ks, cs, ps, ivs, dts, fiv, dte, mult, spot) =>
             tc += c
         if not na(curK) and (na(k) or k != curK)
             if math.abs(accV) > maxV
-                maxV := math.abs(accV), vk := curK
+                maxV := math.abs(accV)
+                vk := curK
             if math.abs(accC) > maxC
-                maxC := math.abs(accC), ck := curK
+                maxC := math.abs(accC)
+                ck := curK
             accV := 0.0
             accC := 0.0
         if not na(k)
@@ -429,8 +441,16 @@ var float g_cw   = na
 var float g_pw   = na
 
 if barstate.islast
-    array.clear(sK), array.clear(sC), array.clear(sP), array.clear(sIv), array.clear(sDt)
-    array.clear(nK), array.clear(nC), array.clear(nP), array.clear(nIv), array.clear(nDt)
+    array.clear(sK)
+    array.clear(sC)
+    array.clear(sP)
+    array.clear(sIv)
+    array.clear(sDt)
+    array.clear(nK)
+    array.clear(nC)
+    array.clear(nP)
+    array.clear(nIv)
+    array.clear(nDt)
     f_clear()
     // v1.3: resolve the wanted market, then collect BOTH cards across all six
     // fields. Key-less blocks always apply (single-market legacy use).
@@ -440,14 +460,27 @@ if barstate.islast
     okS = false
     float spotS = na, float dteS = na, float multS = 1.0
     float fivS = 0.2, float aivS = na
-    yS = 0, mS = 0, dS = 0
+    yS = 0
+    mS = 0
+    dS = 0
+    dbgS = ""
     for fi = 0 to 5
+        nBefore = array.size(sK)
         [o, sp, dt_, mu, fv, av, y_, m_, d_] = f_parse(array.get(fieldTxt, fi), sK, sC, sP, sIv, sDt,
              "structure", wantMkt, array.get(fieldDef, fi))
+        nAdded = array.size(sK) - nBefore
+        if showDbg and nAdded > 0
+            dbgS := dbgS + "F" + str.tostring(fi + 1) + ":" + str.tostring(nAdded) + " "
         if o and not okS
             okS := true
-            spotS := sp, dteS := dt_, multS := mu, fivS := fv, aivS := av
-            yS := y_, mS := m_, dS := d_
+            spotS := sp
+            dteS := dt_
+            multS := mu
+            fivS := fv
+            aivS := av
+            yS := y_
+            mS := m_
+            dS := d_
     if not okS
         array.push(labs, label.new(bar_index, high,
              "GEX Profile: no structure chain for this chart" + (wantMkt != "" ? " (market " + wantMkt + ")" : "") +
@@ -504,7 +537,11 @@ if barstate.islast
                  "near", wantMkt, array.get(fieldDef, fi))
             if oN and not okN
                 okN := true
-                spotN := spN, dteN := dtN_, multN := muN, fivN := fvN, aivN := avN
+                spotN := spN
+                dteN := dtN_
+                multN := muN
+                fivN := fvN
+                aivN := avN
         float ncw = na
         float npw = na
         if okN and showNear
@@ -534,12 +571,13 @@ if barstate.islast
              "  |  Charm " + (totChm > 0 ? "+" : "") + str.tostring(totChm / 1e6, "#.#") + "M (time = " + (totChm > 0 ? "buy support" : "sell pressure") + ")" +
              (na(chmK) ? "" : " @" + str.tostring(chmK + offset, format.mintick))
         // v1.3.1: show which market block is active (multi-market pastes)
+        dbgTxt = showDbg ? "\nrows: " + (dbgS == "" ? "none" : dbgS) + "| spot " + str.tostring(spotS, format.mintick) : ""
         txt = (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
              (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
              "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
              flowTxt +
              (na(ncw) ? "" : "\nNear CW " + str.tostring(ncw + offset, format.mintick) + " | Near PW " + str.tostring(npw + offset, format.mintick)) +
-             "\nChain: " + dateTxt + (stale ? "  !! STALE — refresh the paste !!" : "")
+             "\nChain: " + dateTxt + (stale ? "  !! STALE — refresh the paste !!" : "") + dbgTxt
         array.push(labs, label.new(bar_index, high, txt, style = label.style_label_left,
              color = stale ? color.new(color.orange, 10) : reg == 1 ? color.new(color.green, 25) : reg == -1 ? color.new(color.red, 25) : color.new(color.gray, 25),
              textcolor = stale ? color.black : color.white, size = size.small))
