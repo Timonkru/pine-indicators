@@ -149,7 +149,49 @@ f_detect() =>
 // v1.3: wantMap = "structure"|"near" - which card this call collects.
 // wantMkt = the market key to match; "" accepts only key-less blocks.
 // defMap  = card assigned to key-less blocks in this field (legacy layout).
-f_parse(txt, ks, cs, ps, ivs, dts, wantMap, wantMkt, defMap) =>
+// ---- Schritt 1: AUSWAHL ---------------------------------------------------
+// Gibt aus einem Paste-Feld nur die Bloecke zurueck, die zu Markt und Karte
+// passen — als reiner Text. v1.4: Auswahl und Rechnung sind getrennt. Vorher
+// filterte der Parser waehrend des Einlesens in GEMEINSAME Arrays; ging das
+// Tor faelschlich auf, rechnete ein fremder Markt still mit. Ein Textschnitt
+// kann diesen Fehler nicht machen: was nicht im Ergebnis steht, existiert
+// fuer die Rechnung nicht.
+f_slice(txt, wantMap, wantMkt, defMap) =>
+    out = ""
+    keep = false
+    if str.length(txt) > 0
+        clean = str.replace_all(str.replace_all(str.replace_all(txt, "\r", ""), "\t", ""), " ", "")
+        lines_ = str.split(clean, "\n")
+        for li = 0 to array.size(lines_) - 1
+            ln = array.get(lines_, li)
+            if str.length(ln) > 0
+                // Header = jede Zeile mit key=value; Datenzeilen sind rein
+                // numerisch mit Semikolon und enthalten nie ein "=".
+                if str.contains(ln, "=")
+                    mkt = ""
+                    mp = defMap
+                    body = str.startswith(ln, "#") ? str.substring(ln, 1) : ln
+                    toks = str.split(body, ";")
+                    for ti = 0 to array.size(toks) - 1
+                        kv = str.split(array.get(toks, ti), "=")
+                        if array.size(kv) == 2
+                            key = str.lower(array.get(kv, 0))
+                            if key == "market"
+                                mkt := str.upper(array.get(kv, 1))
+                            else if key == "map"
+                                mp := str.lower(array.get(kv, 1))
+                    keep := mp == wantMap and (mkt == "" or mkt == wantMkt)
+                if keep
+                    out := out + ln + "\n"
+    out
+
+// ---- Schritt 2: RECHNUNG --------------------------------------------------
+// Parst einen bereits ausgewaehlten Textabschnitt EINES Marktes. Kein Filter,
+// kein Zustand — das ist der Parser, der seit v1.0 nachweislich korrekt ist.
+// dts: Restlaufzeit je Strike (optionales 5. Feld; -1 = Header-dte nutzen).
+// aiv (Header): ATM-IV der VOLLEN Kette inkl. OI=0-Zeilen — der Paste traegt
+// nur OI>0, ohne aiv driftet der Expected Move.
+f_parse(txt, ks, cs, ps, ivs, dts) =>
     ok = false
     float spot = na
     float dte  = na
@@ -159,77 +201,49 @@ f_parse(txt, ks, cs, ps, ivs, dts, wantMap, wantMkt, defMap) =>
     int   yy = 0
     int   mm = 0
     int   dd = 0
-    // FAIL CLOSED (v1.3.3): rows before the first recognised header are NOT
-    // collected. Previously this started as true, so a header that failed to
-    // be recognised for any reason (an invisible character from copy-paste is
-    // enough) silently disabled the market filter for that whole field - the
-    // rows loaded unfiltered while the header values stayed empty.
-    blkOn = false
     if str.length(txt) > 0
-        // strip whitespace globally — the format is purely numeric/keyword
-        clean = str.replace_all(str.replace_all(str.replace_all(txt, "\r", ""), "\t", ""), " ", "")
-        lines = str.split(clean, "\n")
-        for li = 0 to array.size(lines) - 1
-            ln = array.get(lines, li)
-            if str.length(ln) == 0
-                continue
-            // A header is any line carrying a key=value pair. Data rows are
-            // purely numeric with semicolons and never contain "=", so this
-            // recognises headers even with a stray leading character.
-            if str.contains(ln, "=")
-                // each header starts a new block; read gating keys first
-                blkMkt = ""
-                blkMap = defMap
-                hdrBody = str.startswith(ln, "#") ? str.substring(ln, 1) : ln
-                toks0 = str.split(hdrBody, ";")
-                for ti = 0 to array.size(toks0) - 1
-                    kv = str.split(array.get(toks0, ti), "=")
-                    if array.size(kv) == 2
-                        if str.lower(array.get(kv, 0)) == "market"
-                            blkMkt := str.upper(array.get(kv, 1))
-                        else if str.lower(array.get(kv, 0)) == "map"
-                            blkMap := str.lower(array.get(kv, 1))
-                blkOn := blkMap == wantMap and (blkMkt == "" or blkMkt == wantMkt)
-                if not blkOn
-                    continue
-                toks = str.split(hdrBody, ";")
-                for ti = 0 to array.size(toks) - 1
-                    kv = str.split(array.get(toks, ti), "=")
-                    if array.size(kv) == 2
-                        k = str.lower(array.get(kv, 0))
-                        v = array.get(kv, 1)
-                        if k == "spot"
-                            spot := str.tonumber(v)
-                        else if k == "dte"
-                            dte := str.tonumber(v)
-                        else if k == "mult"
-                            mult := nz(str.tonumber(v), 1.0)
-                        else if k == "iv"
-                            fiv := nz(str.tonumber(v), 0.2)
-                        else if k == "aiv"
-                            aiv := str.tonumber(v)
-                        else if k == "date"
-                            dp = str.split(v, "-")
-                            if array.size(dp) == 3
-                                yy := int(nz(str.tonumber(array.get(dp, 0))))
-                                mm := int(nz(str.tonumber(array.get(dp, 1))))
-                                dd := int(nz(str.tonumber(array.get(dp, 2))))
-            else
-                if not blkOn
-                    continue
-                f = str.split(ln, ";")
-                if array.size(f) >= 3
-                    k  = str.tonumber(array.get(f, 0))
-                    c  = str.tonumber(array.get(f, 1))
-                    p  = str.tonumber(array.get(f, 2))
-                    iv = array.size(f) >= 4 ? str.tonumber(array.get(f, 3)) : na
-                    dt = array.size(f) >= 5 ? str.tonumber(array.get(f, 4)) : na
-                    if not na(k) and (nz(c) > 0 or nz(p) > 0)
-                        array.push(ks, k)
-                        array.push(cs, nz(c))
-                        array.push(ps, nz(p))
-                        array.push(ivs, na(iv) ? -1.0 : iv)   // -1 = use fallback
-                        array.push(dts, na(dt) or dt <= 0 ? -1.0 : dt)   // -1 = header dte
+        lines_ = str.split(txt, "\n")
+        for li = 0 to array.size(lines_) - 1
+            ln = array.get(lines_, li)
+            if str.length(ln) > 0
+                if str.contains(ln, "=")
+                    body = str.startswith(ln, "#") ? str.substring(ln, 1) : ln
+                    toks = str.split(body, ";")
+                    for ti = 0 to array.size(toks) - 1
+                        kv = str.split(array.get(toks, ti), "=")
+                        if array.size(kv) == 2
+                            k = str.lower(array.get(kv, 0))
+                            v = array.get(kv, 1)
+                            if k == "spot"
+                                spot := str.tonumber(v)
+                            else if k == "dte"
+                                dte := str.tonumber(v)
+                            else if k == "mult"
+                                mult := nz(str.tonumber(v), 1.0)
+                            else if k == "iv"
+                                fiv := nz(str.tonumber(v), 0.2)
+                            else if k == "aiv"
+                                aiv := str.tonumber(v)
+                            else if k == "date"
+                                dp = str.split(v, "-")
+                                if array.size(dp) == 3
+                                    yy := int(nz(str.tonumber(array.get(dp, 0))))
+                                    mm := int(nz(str.tonumber(array.get(dp, 1))))
+                                    dd := int(nz(str.tonumber(array.get(dp, 2))))
+                else
+                    fl = str.split(ln, ";")
+                    if array.size(fl) >= 3
+                        k  = str.tonumber(array.get(fl, 0))
+                        c  = str.tonumber(array.get(fl, 1))
+                        p  = str.tonumber(array.get(fl, 2))
+                        iv = array.size(fl) >= 4 ? str.tonumber(array.get(fl, 3)) : na
+                        dt = array.size(fl) >= 5 ? str.tonumber(array.get(fl, 4)) : na
+                        if not na(k) and (nz(c) > 0 or nz(p) > 0)
+                            array.push(ks, k)
+                            array.push(cs, nz(c))
+                            array.push(ps, nz(p))
+                            array.push(ivs, na(iv) ? -1.0 : iv)
+                            array.push(dts, na(dt) or dt <= 0 ? -1.0 : dt)
         ok := array.size(ks) > 0 and not na(spot) and not na(dte) and dte > 0
     [ok, spot, dte, mult, fiv, aiv, yy, mm, dd]
 
@@ -480,24 +494,30 @@ if barstate.islast
     yS = 0
     mS = 0
     dS = 0
-    dbgS = ""
+    // v1.4: EIN Feld pro Karte. Das erste Feld mit einem passenden Block
+    // gewinnt, alle weiteren werden ignoriert — damit koennen sich zwei
+    // Maerkte strukturell nicht mehr vermischen (der Packer legt jeden Block
+    // ohnehin vollstaendig in genau ein Feld).
+    sliceS = ""
+    srcS = 0
     for fi = 0 to 9
-        nBefore = array.size(sK)
-        [o, sp, dt_, mu, fv, av, y_, m_, d_] = f_parse(array.get(fieldTxt, fi), sK, sC, sP, sIv, sDt,
-             "structure", wantMkt, array.get(fieldDef, fi))
-        nAdded = array.size(sK) - nBefore
-        if showDbg and nAdded > 0
-            dbgS := dbgS + "F" + str.tostring(fi + 1) + ":" + str.tostring(nAdded) + " "
-        if o and not okS
-            okS := true
-            spotS := sp
-            dteS := dt_
-            multS := mu
-            fivS := fv
-            aivS := av
-            yS := y_
-            mS := m_
-            dS := d_
+        if str.length(sliceS) == 0
+            sl = f_slice(array.get(fieldTxt, fi), "structure", wantMkt, array.get(fieldDef, fi))
+            if str.length(sl) > 0
+                sliceS := sl
+                srcS := fi + 1
+    [o, sp, dt_, mu, fv, av, y_, m_, d_] = f_parse(sliceS, sK, sC, sP, sIv, sDt)
+    dbgS = showDbg ? "F" + str.tostring(srcS) + ":" + str.tostring(array.size(sK)) + " " : ""
+    if o
+        okS := true
+        spotS := sp
+        dteS := dt_
+        multS := mu
+        fivS := fv
+        aivS := av
+        yS := y_
+        mS := m_
+        dS := d_
     if not okS
         array.push(labs, label.new(bar_index, high,
              "GEX Profile: no structure chain for this chart" + (wantMkt != "" ? " (market " + wantMkt + ")" : "") +
@@ -549,16 +569,20 @@ if barstate.islast
         okN = false
         float spotN = na, float dteN = na, float multN = 1.0
         float fivN = 0.2, float aivN = na
+        sliceN = ""
         for fi = 0 to 9
-            [oN, spN, dtN_, muN, fvN, avN, yN_, mN_, dN_] = f_parse(array.get(fieldTxt, fi), nK, nC, nP, nIv, nDt,
-                 "near", wantMkt, array.get(fieldDef, fi))
-            if oN and not okN
-                okN := true
-                spotN := spN
-                dteN := dtN_
-                multN := muN
-                fivN := fvN
-                aivN := avN
+            if str.length(sliceN) == 0
+                slN = f_slice(array.get(fieldTxt, fi), "near", wantMkt, array.get(fieldDef, fi))
+                if str.length(slN) > 0
+                    sliceN := slN
+        [oN, spN, dtN_, muN, fvN, avN, yN_, mN_, dN_] = f_parse(sliceN, nK, nC, nP, nIv, nDt)
+        if oN
+            okN := true
+            spotN := spN
+            dteN := dtN_
+            multN := muN
+            fivN := fvN
+            aivN := avN
         float ncw = na
         float npw = na
         if okN and showNear
@@ -579,7 +603,7 @@ if barstate.islast
         if yS > 0
             snapT = timestamp("GMT", yS, mS, dS, 23, 59)
             stale := (timenow - snapT) > 1000 * 60 * 60 * 36
-            dateTxt = str.tostring(yS) + "-" + (mS < 10 ? "0" : "") + str.tostring(mS) + "-" + (dS < 10 ? "0" : "") + str.tostring(dS)
+            dateTxt := str.tostring(yS) + "-" + (mS < 10 ? "0" : "") + str.tostring(mS) + "-" + (dS < 10 ? "0" : "") + str.tostring(dS)
         // vanna > 0: falling vol forces dealers to BUY (and rising vol to sell).
         // charm > 0: the passage of time forces buying, < 0 selling pressure.
         flowTxt = not showFlow or (totVan == 0.0 and totChm == 0.0) ? "" :
@@ -591,7 +615,7 @@ if barstate.islast
         dbgTxt = showDbg ? "\nrows: " + (dbgS == "" ? "none" : dbgS) + "| spot " + str.tostring(spotS, format.mintick) : ""
         // Version im Label: ohne sie ist beim Debuggen nicht feststellbar,
         // welcher Stand auf dem Chart laeuft.
-        txt = "v1.3.3  " + (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
+        txt = "v1.4  " + (wantMkt != "" ? wantMkt + "  |  " : "") + regTxt +
              (na(flip) ? "" : "  |  Flip " + str.tostring(flip + offset, format.mintick) + " (" + str.tostring(distPct, "#.##") + "%)") +
              "\nNet GEX " + str.tostring(totGex / 1e9, "#.##") + " bn/1% | EM1d ±" + str.tostring(em, format.mintick) +
              flowTxt +
