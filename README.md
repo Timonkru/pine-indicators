@@ -19,6 +19,7 @@ All overlays, Pine v6, mostly label-free (signals read from color / geometry).
 | `futures_volume_delta.pine` | Futures volume pane + buy/sell delta + absorption flags | *new — not yet published* |
 | `volume_confirmed_orderblocks.pine` | Order blocks validated by real futures volume | *new — not yet published* |
 | `liquidity_sweep_volume.pine` | Sweeps quantified: excursion volume + delta from real futures | *new — not yet published* |
+| `dealer_gamma_exposure.pine` | Dealer GEX from a pasted option chain: one field, one market, flip / walls / expected move, built-in example | *new — not yet published* |
 | `gamma_exposure_profile.pine` | GEX profile from a manually pasted option chain (flip, walls) | *new — not yet published* |
 
 ## Real futures volume on CFDs / cash indices
