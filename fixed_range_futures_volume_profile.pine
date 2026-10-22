@@ -1,0 +1,267 @@
+//@version=6
+// FIXED RANGE FUTURES VOLUME PROFILE ON CFD CHARTS
+// Same idea as the session/week/month futures profile: REAL exchange volume
+// from the matching futures contract (auto-detected from the chart symbol) is
+// distributed over the PRICE zones of the chart symbol (price = CFD, weight =
+// futures volume -> the basis offset solves itself).
+// Difference: the profile covers a range you pick on the chart (two clicks:
+// start bar, end bar; drag the time markers to move it) instead of a fixed
+// calendar period. Optional: extend the range to the live bar.
+// Precision: futures volume is fetched per intrabar (e.g. 1-min futures bars)
+// and matched by timestamp to the chart symbol's intrabar high/low, so the
+// profile barely depends on the chart timeframe. Bars without intrabar data
+// fall back to chart-bar resolution (counted in the status label).
+// Output: histogram + POC (red) + VAH/VAL (blue). Thick = HVN, thin = LVN.
+indicator("Fixed Range Futures Volume Profile — CFD Charts", shorttitle = "FR Fut Vol Profile", overlay = true,
+     max_boxes_count = 500, max_lines_count = 10, max_labels_count = 10)
+
+// ---- range ----
+startIn = input.time(timestamp("01 Oct 2026 00:00 +0000"), "Start", confirm = true, group = "Range",
+     tooltip = "Click the first bar of the range. Drag the marker on the chart to move it.")
+endIn   = input.time(timestamp("02 Oct 2026 00:00 +0000"), "End", confirm = true, group = "Range",
+     tooltip = "Click the last bar of the range (included).")
+toLive  = input.bool(false, "Extend to the live bar (ignore End)", group = "Range")
+
+// ---- profile ----
+rowsIn = input.int(80, "Rows", minval = 10, maxval = 400, group = "Profile")
+rowPts = input.float(0.0, "Row height (points, 0 = use Rows)", minval = 0, group = "Profile",
+     tooltip = "0 = the range is split into the number of rows above. Otherwise a fixed point height per row (max. 400 rows).")
+vaPct  = input.float(70, "Value area %", minval = 50, maxval = 90, step = 5, group = "Profile")
+
+// ---- volume ----
+volMode   = input.string("Futures symbol", "Volume source",
+     options = ["Chart (CFD)", "Futures symbol"], group = "Volume",
+     tooltip = "Futures = real exchange volume of the matching contract. Chart = this chart's own volume (use on a native futures chart).")
+autoFut   = input.bool(true, "Auto-detect futures symbol", group = "Volume")
+futManual = input.symbol("EUREX:FDAX1!", "…manual otherwise", group = "Volume")
+precIn    = input.string("Auto", "Intrabar precision",
+     options = ["Auto", "1 min", "5 min", "15 min", "Off (chart bars)"], group = "Volume",
+     tooltip = "Volume is placed at the high/low of these sub-bars instead of the whole chart bar. Auto: 1 min up to 15m charts, 5 min up to 1h, 15 min up to 4h, 1h above. Falls back to chart bars where no intrabar history exists.")
+useChart  = volMode == "Chart (CFD)"
+useFut    = not useChart
+
+// ---- display ----
+posMode  = input.string("Range start", "Profile position", options = ["Range start", "Range end"], group = "Display")
+widthPct = input.int(30, "Profile width (% of range)", minval = 5, maxval = 100, group = "Display")
+extLvls  = input.bool(false, "Extend POC / VA lines right", group = "Display")
+showHist = input.bool(true, "Show histogram", group = "Display")
+showBox  = input.bool(true, "Show range box", group = "Display")
+pocCol   = input.color(color.red, "POC", group = "Display")
+vaCol    = input.color(color.blue, "Value area", group = "Display")
+barCol   = input.color(color.teal, "Volume bars", group = "Display")
+
+// ---- auto-detection: chart symbol -> matching futures contract ----
+f_detectFut() =>
+    s = str.lower(syminfo.ticker) + " " + str.lower(syminfo.prefix) + " " + str.lower(syminfo.description)
+    isNQ  = str.contains(s, "nas") or str.contains(s, "ndx") or str.contains(s, "us100") or str.contains(s, "ustec") or str.contains(s, "tech100") or str.contains(s, "nq1") or str.contains(s, "nq!")
+    isYM  = str.contains(s, "dow") or str.contains(s, "us30") or str.contains(s, "dji") or str.contains(s, "ym1") or str.contains(s, "ym!") or str.contains(s, "wall street")
+    isDAX = str.contains(s, "dax") or str.contains(s, "ger40") or str.contains(s, "de40") or str.contains(s, "german")
+    isFTSE = str.contains(s, "ftse") or str.contains(s, "uk100") or str.contains(s, "ukx")
+    isES  = str.contains(s, "us500") or str.contains(s, "sp500") or str.contains(s, "spx") or str.contains(s, "s&p") or str.contains(s, "es1") or str.contains(s, "es!")
+    isDAX ? "EUREX:FDAX1!" : isFTSE ? "ICEEUR:Z1!" : isNQ ? "CME_MINI:NQ1!" :
+     isYM ? "CBOT_MINI:YM1!" : isES ? "CME_MINI:ES1!" : syminfo.tickerid
+
+futSym = autoFut ? f_detectFut() : futManual
+
+// ---- intrabar timeframe (never higher than the chart) ----
+chartSec = timeframe.in_seconds()
+autoTf   = chartSec <= 60 ? timeframe.period : chartSec <= 900 ? "1" : chartSec <= 3600 ? "5" : chartSec <= 14400 ? "15" : "60"
+reqTf    = precIn == "Auto" ? autoTf : precIn == "1 min" ? "1" : precIn == "5 min" ? "5" : precIn == "15 min" ? "15" : timeframe.period
+ltf      = timeframe.in_seconds(reqTf) > chartSec ? timeframe.period : reqTf
+
+// Chart symbol intrabars give the price (high/low), futures intrabars the weight.
+[cT, cH, cL, cV] = request.security_lower_tf(syminfo.tickerid, ltf, [time, high, low, volume])
+[fT, fV] = request.security_lower_tf(futSym, ltf, [time, volume], ignore_invalid_symbol = true)
+// Chart-bar fallback. gaps_on: a chart bar without a futures bar (e.g. overnight
+// hours of a 24h CFD) returns na instead of repeating the last futures volume.
+futVolBar = request.security(futSym, timeframe.period, volume, gaps = barmerge.gaps_on, ignore_invalid_symbol = true)
+
+// ---- range gate (bar open time, both ends included) ----
+tA = math.min(startIn, endIn)
+tB = math.max(startIn, endIn)
+inRange = time >= tA and (toLive or time <= tB)
+
+// ---- collect volume entries inside the range ----
+// No silent fallback to CFD tick volume: tick volume and futures contracts are
+// different units. Bars without futures data contribute nothing.
+MAX_E = 100000
+var array<float> eLo = array.new_float()
+var array<float> eHi = array.new_float()
+var array<float> eV  = array.new_float()
+var int   sBar    = na      // first bar of the range
+var int   eBar    = na      // last bar of the range
+var float sHi     = na      // range high of the chart bars (status label position)
+var int   nIntra  = 0       // entries placed at intrabar precision
+var int   nMiss   = 0       // ...of which had no matching chart intrabar (chart bar range used)
+var int   nCoarse = 0       // chart bars placed at chart-bar resolution
+var bool  capHit  = false
+
+f_push(float lo, float hi, float v) =>
+    ok = array.size(eV) < MAX_E
+    if ok
+        array.push(eLo, lo)
+        array.push(eHi, hi)
+        array.push(eV, v)
+    ok
+
+if inRange
+    if na(sBar)
+        sBar := bar_index
+    eBar := bar_index
+    sHi  := math.max(nz(sHi, high), high)
+    nC = array.size(cT)
+    if useFut
+        nF = array.size(fT)
+        if nC > 0 and nF > 0
+            j = 0
+            for i = 0 to nF - 1
+                v = array.get(fV, i)
+                if not na(v) and v > 0
+                    t = array.get(fT, i)
+                    while j < nC and array.get(cT, j) < t
+                        j += 1
+                    matched = j < nC and array.get(cT, j) == t
+                    lo = matched ? array.get(cL, j) : low
+                    hi = matched ? array.get(cH, j) : high
+                    if not f_push(lo, hi, v)
+                        capHit := true
+                    nIntra += 1
+                    if not matched
+                        nMiss += 1
+        else if not na(futVolBar) and futVolBar > 0
+            // futures traded, but no intrabar history here -> whole chart bar
+            if not f_push(low, high, futVolBar)
+                capHit := true
+            nCoarse += 1
+    else
+        if nC > 0
+            for i = 0 to nC - 1
+                v = array.get(cV, i)
+                if not na(v) and v > 0
+                    if not f_push(array.get(cL, i), array.get(cH, i), v)
+                        capHit := true
+                    nIntra += 1
+        else if not na(volume) and volume > 0
+            if not f_push(low, high, volume)
+                capHit := true
+            nCoarse += 1
+
+// ---- draw (last bar only) ----
+var box[]   boxes = array.new_box()
+var line[]  lines = array.new_line()
+var label[] labs  = array.new_label()
+
+f_clear() =>
+    for b in boxes
+        box.delete(b)
+    array.clear(boxes)
+    for l in lines
+        line.delete(l)
+    array.clear(lines)
+    for lb in labs
+        label.delete(lb)
+    array.clear(labs)
+
+f_tfText(string tf) =>
+    sec = timeframe.in_seconds(tf)
+    tf == timeframe.period ? "chart bars" : sec < 3600 ? str.tostring(sec / 60) + "m intrabars" : str.tostring(sec / 3600) + "h intrabars"
+
+if barstate.islast
+    f_clear()
+    nE = array.size(eV)
+    if na(sBar)
+        array.push(labs, label.new(bar_index, high, "⚠ Range outside the loaded bars — click Start/End again",
+             style = label.style_label_down, color = color.new(color.black, 25), textcolor = color.white, size = size.small))
+    else if nE > 0
+        rHi = array.max(eHi)
+        rLo = array.min(eLo)
+        // ---- row grid ----
+        float base = rLo
+        float rowW = (rHi - rLo) / rowsIn
+        int   nRows = rowsIn
+        if rowPts > 0
+            base  := math.floor(rLo / rowPts) * rowPts
+            rowW  := rowPts
+            nRows := int(math.ceil((rHi - base) / rowPts))
+            if nRows > 400
+                nRows := 400
+                rowW  := (rHi - base) / 400
+        if rowW <= 0
+            rowW  := syminfo.mintick
+            nRows := 1
+        nRows := math.max(1, nRows)
+        // ---- distribute each entry evenly over the rows its high/low covers ----
+        vols = array.new_float(nRows, 0.0)
+        for i = 0 to nE - 1
+            loK = math.max(0, math.min(nRows - 1, int(math.floor((array.get(eLo, i) - base) / rowW))))
+            hiK = math.max(0, math.min(nRows - 1, int(math.floor((array.get(eHi, i) - base) / rowW))))
+            share = array.get(eV, i) / (hiK - loK + 1)
+            for k = loK to hiK
+                array.set(vols, k, array.get(vols, k) + share)
+        total = 0.0
+        maxv = 0.0
+        pocI = 0
+        for k = 0 to nRows - 1
+            vv = array.get(vols, k)
+            total += vv
+            if vv > maxv
+                maxv := vv
+                pocI := k
+        // value area around the POC (same expansion as the period profile)
+        vaVol = array.get(vols, pocI)
+        loI = pocI
+        hiI = pocI
+        target = total * vaPct / 100.0
+        while vaVol < target and (loI > 0 or hiI < nRows - 1)
+            upV = hiI < nRows - 1 ? array.get(vols, hiI + 1) : -1.0
+            dnV = loI > 0 ? array.get(vols, loI - 1) : -1.0
+            if upV >= dnV
+                hiI += 1
+                vaVol += math.max(upV, 0.0)
+            else
+                loI -= 1
+                vaVol += math.max(dnV, 0.0)
+        pocPrice = base + (pocI + 0.5) * rowW
+        vah = base + (hiI + 1) * rowW
+        val = base + loI * rowW
+        // ---- geometry ----
+        rightX = toLive ? bar_index : eBar
+        profW  = math.max(3, int(math.round((rightX - sBar) * widthPct / 100.0)))
+        atStart = posMode == "Range start"
+        if showBox
+            array.push(boxes, box.new(sBar, rHi, rightX, rLo, border_color = color.new(color.gray, 60),
+                 border_style = line.style_dotted, bgcolor = color.new(color.gray, 94)))
+        if showHist
+            for k = 0 to nRows - 1
+                v = array.get(vols, k)
+                w = maxv > 0 ? int(math.round(profW * v / maxv)) : 0
+                if w > 0
+                    y1 = base + k * rowW
+                    y2 = y1 + rowW
+                    inVa = k >= loI and k <= hiI
+                    x1 = atStart ? sBar : rightX - w
+                    x2 = atStart ? sBar + w : rightX
+                    array.push(boxes, box.new(x1, y2, x2, y1, border_color = na,
+                         bgcolor = color.new(barCol, inVa ? 45 : 72)))
+        ext = extLvls ? extend.right : extend.none
+        array.push(lines, line.new(sBar, pocPrice, rightX, pocPrice, color = pocCol, width = 2, extend = ext))
+        array.push(lines, line.new(sBar, vah, rightX, vah, color = vaCol, style = line.style_dashed, extend = ext))
+        array.push(lines, line.new(sBar, val, rightX, val, color = vaCol, style = line.style_dashed, extend = ext))
+        array.push(labs, label.new(rightX, pocPrice, "POC " + str.tostring(pocPrice, format.mintick),
+             style = label.style_label_left, color = color.new(pocCol, 20), textcolor = color.white, size = size.small))
+        array.push(labs, label.new(rightX, vah, "VAH " + str.tostring(vah, format.mintick),
+             style = label.style_label_left, color = color.new(vaCol, 30), textcolor = color.white, size = size.small))
+        array.push(labs, label.new(rightX, val, "VAL " + str.tostring(val, format.mintick),
+             style = label.style_label_left, color = color.new(vaCol, 30), textcolor = color.white, size = size.small))
+    // ---- status: volume source + precision, at the range start ----
+    if not na(sBar)
+        src = useChart ? "Chart volume" : (nE == 0 ? "⚠ " + futSym + " NO DATA in range" : "Futures " + futSym)
+        prec = f_tfText(ltf)
+        if nIntra > 0 and nMiss > 0
+            prec += " (" + str.tostring(100.0 * (nIntra - nMiss) / nIntra, "#") + "% matched)"
+        if nCoarse > 0
+            prec += " · " + str.tostring(nCoarse) + " bars at chart resolution"
+        if capHit
+            prec += " · ⚠ entry cap reached, shorten the range"
+        array.push(labs, label.new(sBar, sHi, src + " · " + prec,
+             style = label.style_label_down, color = color.new(color.black, 25), textcolor = color.white, size = size.small))
