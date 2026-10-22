@@ -13,7 +13,7 @@ All overlays, Pine v6, mostly label-free (signals read from color / geometry).
 | `kasse_alerts.pine` | Opening-range setups + volume confirmation | Hougaard Opening Setups (School Run / Brunch / 8-Ball / Teen) |
 | `kasse_alerts_swing_v7.2.pine` | Weekly / multi-day swing levels | Weekly Swing Levels — Thu/Fri/Mon Hougaard COT |
 | `future_volume_profile.pine` | Futures volume profile on any chart (POC / VA / HVN-LVN) | *new — not yet published* |
-| `fixed_range_futures_volume_profile.pine` | Futures volume profile over a click-selected range, intrabar precision (POC / VA / HVN-LVN) | *new — not yet published* |
+| `fixed_range_futures_volume_profile.pine` | Futures volume profile over a click-selected range, intrabar precision (POC / VA / HVN-LVN) | Fixed Range Futures Volume Profile — CFD Charts |
 | `vwap_stdev_futurevol.pine` | VWAP + StdDev bands, real futures volume | *new — not yet published* |
 | `twap_futurevol.pine` | TWAP + bands, futures-session gated, VWAP-spread readout | *new — not yet published* |
 | `futures_volume_delta.pine` | Futures volume pane + buy/sell delta + absorption flags | *new — not yet published* |
